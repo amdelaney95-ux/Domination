@@ -3213,6 +3213,19 @@ const sleep = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.
 let diceTimeline = [];
 
 let hovered = null;                  // territory under the cursor
+/**
+ * Which game the async loops belong to.
+ *
+ * A CPU turn is a loop with awaits in it, and it reads the module-level `state`.
+ * Start a new game while one is in flight — "Play again" mid-turn, or loading a
+ * save — and the old loop keeps going against the *new* board: it called endTurn
+ * on a game the player had only just started, wiping their undo history and
+ * taking their turn. Every loop now carries the id it began under and stops the
+ * moment that is no longer current.
+ */
+let gameId = 0;
+const newGameId = () => ++gameId;
+
 let tipLayer = null;                 // the hover tooltip's <g>, kept so it can be removed
 let labelSpots = {};                 // territoryId -> where its name is lettered
 let shrunkNode = null;               // territory currently drawn mid-battle
@@ -3242,6 +3255,8 @@ $('btn-start').addEventListener('click', () => {
   const difficulties = [...$('opponents').querySelectorAll('select')].map((s) => s.value);
   const seedInput = $('in-seed').value.trim();
   const drafting = $('in-start').value === 'draft';
+  newGameId();
+  busy = false;
   state = createGame({
     humanName: $('in-name').value.trim() || 'You',
     cpuDifficulties: difficulties,
@@ -3258,6 +3273,7 @@ $('btn-start').addEventListener('click', () => {
   $('result').hidden = true;
   drawBoard();
   render();
+  kickOff();
 });
 
 /** Download the game as a file the player keeps. */
@@ -3284,6 +3300,7 @@ function doLoad(file) {
   reader.onload = () => {
     try {
       const restored = deserializeGame(JSON.parse(reader.result));
+      newGameId();
       state = restored;
       sel = { from: null, to: null, chunk: 1, moveCount: null, lastCombat: null, pickedCards: [] };
       busy = false;
@@ -3292,8 +3309,7 @@ function doLoad(file) {
       $('result').hidden = true;
       drawBoard();
       render();
-      if (state.turn.phase === PHASES.GAME_OVER) showResult();
-      else if (currentPlayer(state).isCPU) runCpuTurns();
+      kickOff();
     } catch (err) {
       // the setup sheet is still up, so put the error where it will be seen
       window.alert('Could not load that save.\n\n' + err.message);
@@ -3315,6 +3331,26 @@ function doConcede() {
   if (!r.ok) return flash(r.error);
   render();
   showResult();
+}
+
+/**
+ * Hand control to whoever is actually up.
+ *
+ * Every path that produces a fresh board has to do this, because nothing else
+ * will: the CPU only ever moved because a human action ended their own turn and
+ * called on. That held while the human was always seated first, and broke the
+ * moment turn order could be shuffled — a game opening on a CPU simply sat there
+ * announcing that it was their move. The games that appeared to work were the
+ * ones where the shuffle happened to seat the human first.
+ */
+function kickOff() {
+  if (!state) return;
+  if (state.setup.active) {
+    if (currentPlayer(state).isCPU) runSetup();
+    return;
+  }
+  if (state.turn.phase === PHASES.GAME_OVER) { showResult(); return; }
+  if (currentPlayer(state).isCPU) runCpuTurns();
 }
 
 function renderSpeed() {
@@ -4981,6 +5017,7 @@ function doAutoAssign() {
 async function runSetup() {
   if (busy) return;
   busy = true;
+  const era = gameId;
   try {
     let guard = 0;
     while (state.setup.active && state.turn.phase === PHASES.CLAIM
@@ -4989,6 +5026,7 @@ async function runSetup() {
       if (!r || !r.ok) break;
       render();
       await sleep(pace().step * 0.45);
+      if (era !== gameId) return;              // a new game started under us
     }
     if (state.setup.active && state.turn.phase === PHASES.DEPLOY
       && currentPlayer(state).isCPU) {
@@ -4996,7 +5034,14 @@ async function runSetup() {
     }
   } finally {
     busy = false;
-    render();
+    if (era === gameId) {
+      render();
+      // setup can finish inside this call — the first real turn may belong to a CPU
+      if (!state.setup.active && state.turn.phase !== PHASES.GAME_OVER
+        && currentPlayer(state).isCPU) {
+        runCpuTurns();
+      }
+    }
   }
 }
 
@@ -5010,29 +5055,33 @@ async function runCpuTurns() {
   if (state.turn.phase === PHASES.GAME_OVER) return showResult();
   if (!currentPlayer(state).isCPU) return;
   busy = true;
+  const era = gameId;
   try {
     let guard = 0;
     while (currentPlayer(state).isCPU && state.turn.phase !== PHASES.GAME_OVER && guard++ < 200) {
       for (const ev of stepTurn(state)) {
         if (ev.type === 'battle') {
           await animateBattle(ev, cpuBattleDuration());
-          continue;
-        }
-        if (ev.type === 'capture') {
+        } else if (ev.type === 'capture') {
           await animateCapture(ev, cpuBattleDuration());
-          continue;
+        } else {
+          releaseShrink();
+          render();
+          await sleep(stepDelay(ev.type));
         }
-        releaseShrink();
-        render();
-        await sleep(stepDelay(ev.type));
+        // Checked after every await, and before touching the board again. The
+        // generator is still mid-turn on the old game; abandoning it is correct.
+        if (era !== gameId) { releaseShrink(); return; }
       }
       if (state.turn.phase === PHASES.GAME_OVER) break;
     }
   } finally {
     releaseShrink();
-    busy = false;
-    render();
-    if (state.turn.phase === PHASES.GAME_OVER) showResult();
+    if (era === gameId) {
+      busy = false;
+      render();
+      if (state.turn.phase === PHASES.GAME_OVER) showResult();
+    }
   }
 }
 
