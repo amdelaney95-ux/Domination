@@ -227,6 +227,7 @@ svg.board{width:100%;height:100%;display:block}
 .die-shadow{fill:#0a141e;opacity:.4}
 .pair-mark{font-family:var(--font-data);font-size:11px;font-weight:600;text-anchor:middle}
 
+.roll-results:empty{display:none}
 .dice-row{display:flex;gap:16px;margin-top:13px}
 .dice-side{flex:1}
 .dice-side h3{font-family:var(--font-map);font-size:10px;letter-spacing:.16em;
@@ -1049,6 +1050,10 @@ function newTurnRecord(playerIndex) {
     phase: PHASES.REINFORCE,
     pendingReinforcements: 0,
     capturedThisTurn: false,
+    // Rolls made this turn. Undo may step back into reinforcement only while
+    // this is zero — once dice have been seen, un-placing troops would be
+    // rewriting a decision with knowledge of its outcome.
+    attacksMade: 0,
     pendingOccupy: null,   // { fromId, toId, minTroops, maxTroops }
     fortifyUsed: false,
     mustTradeCards: false,
@@ -1325,17 +1330,37 @@ function clearUndoLog(state, playerId) {
   if (state.undoLog) state.undoLog[playerId] = [];
 }
 
+/**
+ * Whether undo may step back out of the attack phase into reinforcement.
+ *
+ * Placing with "All" empties the pool, which auto-advances the phase — so a
+ * misclick on the last placement immediately became unreachable, which is
+ * exactly the case undo exists for. Rewinding is allowed only before a single
+ * die has been rolled: after that, un-placing troops would mean revising a
+ * decision with knowledge of how it turned out.
+ */
+function canRewindToReinforcement(state) {
+  if (state.turn.phase !== PHASES.ATTACK) return false;
+  if (state.turn.attacksMade !== 0) return false;      // undefined (old saves) also blocks
+  if (state.turn.capturedThisTurn) return false;
+  const player = currentPlayer(state);
+  const log = (state.undoLog && state.undoLog[player.id]) || [];
+  return log.some((e) => e.phase === PHASES.REINFORCE);
+}
+
 /** How many placements the current player could still take back. */
 function undoableCount(state) {
   const player = currentPlayer(state);
   const log = (state.undoLog && state.undoLog[player.id]) || [];
-  return log.filter((e) => e.phase === state.turn.phase).length;
+  const phase = canRewindToReinforcement(state) ? PHASES.REINFORCE : state.turn.phase;
+  return log.filter((e) => e.phase === phase).length;
 }
 
 /** Reverse the most recent troop placement of the current phase. */
 function undoPlacement(state) {
   const player = currentPlayer(state);
-  const phase = state.turn.phase;
+  const rewinding = canRewindToReinforcement(state);
+  const phase = rewinding ? PHASES.REINFORCE : state.turn.phase;
   if (phase !== PHASES.REINFORCE && phase !== PHASES.DEPLOY) {
     return fail('Nothing to undo in this phase');
   }
@@ -1357,10 +1382,14 @@ function undoPlacement(state) {
   log.splice(index, 1);
   if (phase === PHASES.REINFORCE) {
     state.turn.pendingReinforcements += entry.count;
+    // step the turn back so the returned troops can actually be placed again
+    if (rewinding) state.turn.phase = PHASES.REINFORCE;
   } else {
     state.setup.armiesRemaining[player.id] += entry.count;
   }
-  return { ok: true, territoryId: entry.territoryId, count: entry.count };
+  return {
+    ok: true, territoryId: entry.territoryId, count: entry.count, rewound: rewinding,
+  };
 }
 
 /** Finish reinforcement and move to the attack phase. */
@@ -1392,6 +1421,7 @@ function attack(state, fromId, toId) {
   if (from.troopCount < 2) return fail('Attacking territory needs at least 2 troops');
 
   const defenderId = to.ownerId;
+  state.turn.attacksMade = (state.turn.attacksMade || 0) + 1;
   const result = resolveCombat(from, to, state.rng);
   from.troopCount -= result.attackerLosses;
   to.troopCount -= result.defenderLosses;
@@ -1623,6 +1653,14 @@ function claimTerritory(state, territoryId) {
   if (unclaimedTerritories(state).length === 0) {
     state.turn.phase = PHASES.DEPLOY;
     state.turn.playerIndex = 0;
+    // Freeze the board as every commander sees it at the moment deployment
+    // opens. Everyone plans against this, nobody against anyone else's finished
+    // position — deployment is a simultaneous decision revealed together, even
+    // though the human enters theirs first for convenience.
+    state.setup.boardAtDeploy = {};
+    for (const t of Object.values(state.territories)) {
+      state.setup.boardAtDeploy[t.id] = [t.ownerId, t.troopCount];
+    }
     log(state, 'All territories claimed — deploy your remaining armies');
   } else {
     state.turn.playerIndex = (state.turn.playerIndex + 1) % state.players.length;
@@ -1666,6 +1704,81 @@ function advanceDeploy(state) {
   finishSetup(state);
 }
 
+/**
+ * A private view of the board as it stood when deployment opened.
+ *
+ * Passing the live board would let a commander read everyone else's deployment;
+ * this is what keeps the decision simultaneous. Players and the RNG are shared
+ * with the real game, so scoring and randomness behave exactly as normal.
+ */
+function boardAsAtDeploy(state) {
+  const snapshot = state.setup.boardAtDeploy;
+  const territories = {};
+  for (const id of Object.keys(state.territories)) {
+    const saved = snapshot && snapshot[id];
+    territories[id] = saved
+      ? { ...state.territories[id], ownerId: saved[0], troopCount: saved[1] }
+      : { ...state.territories[id] };
+  }
+  return { ...state, territories };
+}
+
+/**
+ * Commit every remaining CPU deployment at once.
+ *
+ * Each commander plans against the frozen board plus only their own accumulating
+ * armies, so the order they are applied in cannot change what any of them chose.
+ */
+/**
+ * Apply a whole plan for one player.
+ *
+ * Deliberately does not go through deployInitial. That reads whose turn it is and
+ * hands the floor on after a CPU places, so feeding it a multi-entry plan applied
+ * only the first entry and attributed the rest to the next commander — which then
+ * dumped an entire pool onto one square. A plan belongs to the player who made
+ * it, regardless of whose turn the record says it is.
+ */
+function applyDeploymentPlan(state, player, plan) {
+  let placed = 0;
+  for (const { territoryId, count } of plan) {
+    const territory = state.territories[territoryId];
+    if (!territory || territory.ownerId !== player.id || count < 1) continue;
+    territory.troopCount += count;
+    state.setup.armiesRemaining[player.id] -= count;
+    recordPlacement(state, player.id, PHASES.DEPLOY, territoryId, count);
+    placed += count;
+  }
+  // any rounding shortfall goes to the strongest square already in the plan
+  const shortfall = armiesLeftToPlace(state, player.id);
+  if (shortfall > 0) {
+    const fallback = plan.length
+      ? state.territories[plan[0].territoryId]
+      : territoriesOf(state, player.id)[0];
+    if (fallback) {
+      fallback.troopCount += shortfall;
+      state.setup.armiesRemaining[player.id] -= shortfall;
+      recordPlacement(state, player.id, PHASES.DEPLOY, fallback.id, shortfall);
+      placed += shortfall;
+    }
+  }
+  return placed;
+}
+
+function deployRemainingCpus(state, planner) {
+  if (state.turn.phase !== PHASES.DEPLOY) return refuse('Not in the deploy phase');
+  for (const player of state.players) {
+    if (!player.isCPU) continue;
+    const armies = armiesLeftToPlace(state, player.id);
+    if (armies < 1) continue;
+    applyDeploymentPlan(state, player, planner(boardAsAtDeploy(state), player, armies));
+  }
+  // whoever still has armies keeps the floor; otherwise the game opens
+  const anyLeft = state.players.some((p) => armiesLeftToPlace(state, p.id) > 0);
+  if (!anyLeft) return finishSetup(state);
+  advanceDeploy(state);
+  return { ok: true, phase: state.turn.phase };
+}
+
 /** Leave setup and open the first real turn. */
 function finishSetup(state) {
   state.setup.active = false;
@@ -1680,7 +1793,7 @@ function finishSetup(state) {
  * both at the start and partway through a draft the player has tired of.
  * Claims are spread evenly; armies land with the same weighting the CPUs use.
  */
-function autoAssignRemaining(state, pickClaim, pickDeploy) {
+function autoAssignRemaining(state, pickClaim, planner) {
   let guard = 0;
   while (state.setup.active && guard++ < 2000) {
     const player = currentPlayer(state);
@@ -1690,10 +1803,17 @@ function autoAssignRemaining(state, pickClaim, pickDeploy) {
       const choice = pickClaim ? pickClaim(state, player) : state.rng.pick(options);
       claimTerritory(state, (choice || state.rng.pick(options)).id);
     } else if (state.turn.phase === PHASES.DEPLOY) {
+      // Deployment is planned in one pass against the frozen board, for whoever
+      // is being auto-assigned — the same treatment every commander gets, so
+      // handing your placement to the computer does not change the terms.
       const owned = territoriesOf(state, player.id);
-      if (!owned.length) break;
-      const choice = pickDeploy ? pickDeploy(state, player) : state.rng.pick(owned);
-      deployInitial(state, (choice || state.rng.pick(owned)).id, 1);
+      const armies = armiesLeftToPlace(state, player.id);
+      if (!owned.length || armies < 1) { advanceDeploy(state); continue; }
+      const plan = planner
+        ? planner(boardAsAtDeploy(state), player, armies)
+        : [{ territoryId: state.rng.pick(owned).id, count: armies }];
+      applyDeploymentPlan(state, player, plan);
+      advanceDeploy(state);
     } else {
       break;
     }
@@ -2096,6 +2216,81 @@ function* doFortify(state, player, config) {
 
   engine.endTurn(state);
   yield { type: 'endTurn' };
+}
+
+// ---------------------------------------------------------------------------
+// Opening deployment
+// ---------------------------------------------------------------------------
+
+/**
+ * Plan a whole opening deployment against a frozen board.
+ *
+ * This cannot reuse the mid-game reinforcement heuristic. That one scores a
+ * territory by `enemyPressure - ownTroops`, which is right when the board has
+ * real stacks on it — but at deployment every territory holds a single army, so
+ * the scores are nearly tied and each placed troop lowers its own square's
+ * score. Placing one at a time then self-levels into an almost uniform spread:
+ * measured at a largest stack of 2 across sixty games, which is fair but limp.
+ *
+ * So deployment scores *structure* instead of threat — how exposed a territory
+ * is, how valuable and how nearly-complete its continent is — and allocates the
+ * whole pool proportionally in one pass. That concentrates without needing to
+ * see what anyone else did.
+ */
+function planDeployment(board, player, armies) {
+  const owned = territoriesOf(board, player.id);
+  if (!owned.length || armies < 1) return [];
+  const config = getConfig(player.difficulty);
+
+  const scored = owned.map((t) => {
+    const exposure = t.adjacentIds
+      .filter((n) => board.territories[n].ownerId !== player.id).length;
+
+    // An interior territory earns almost nothing: armies parked behind the line
+    // do no work until they are walked forward.
+    let score = exposure === 0 ? 0.12 : 0.9 + exposure * 1.15;
+
+    const ids = CONTINENT_TERRITORIES[t.continentId];
+    const mine = ids.filter((id) => board.territories[id].ownerId === player.id).length;
+    const share = mine / ids.length;
+    // hold what you nearly own, and value continents that are cheap to defend
+    score += CONTINENT_VALUE[t.continentId] * share * 3.2 * config.continentWeight;
+    if (share > 0.6) score += CONTINENT_VALUE[t.continentId] * 2.4 * config.continentWeight;
+
+    // weaker commanders spread more raggedly
+    score *= 1 + (board.rng.next() - 0.5) * config.randomness * 1.6;
+    return { id: t.id, score: Math.max(0.05, score) };
+  });
+
+  // Raise the scores to a power before allocating. Proportional allocation over
+  // similar scores just spreads evenly — the first version handed out 2s and 3s
+  // across eleven territories, which is a plan with no shape to it. The exponent
+  // turns a modest scoring edge into a decisively bigger garrison, and stronger
+  // commanders commit harder.
+  const sharpness = 1.6 + config.continentWeight * 0.5;
+  for (const t of scored) t.score = Math.pow(t.score, sharpness);
+
+  const total = scored.reduce((n, t) => n + t.score, 0);
+  const plan = [];
+  let assigned = 0;
+
+  // proportional allocation, then hand the rounding remainder to the best squares
+  for (const t of scored) {
+    const share = Math.floor((t.score / total) * armies);
+    if (share > 0) { plan.push({ territoryId: t.id, count: share }); assigned += share; }
+  }
+  const byScore = [...scored].sort((a, b) => b.score - a.score);
+  let leftover = armies - assigned;
+  let i = 0;
+  while (leftover > 0) {
+    const target = byScore[i % byScore.length];
+    const existing = plan.find((e) => e.territoryId === target.id);
+    if (existing) existing.count++;
+    else plan.push({ territoryId: target.id, count: 1 });
+    leftover--;
+    i++;
+  }
+  return plan;
 }
 
 /* ===== src/ui/layout.js ===== */
@@ -4007,6 +4202,8 @@ function renderDeploy(box, title) {
   box.innerHTML = '<p class="prompt"><strong>' + left + '</strong> arm' + (left === 1 ? 'y' : 'ies') +
     ' left to place. Put them anywhere you hold — this is your chance to build a wall ' +
     'before anyone moves.</p>' +
+    '<p class="hint">Your opponents are deploying at the same time, against the board as it ' +
+    'stands now. They cannot see where you put these.</p>' +
     '<div class="segmented" id="chunks">' +
       [1, 5, 'all'].map((v) => {
         const on = String(sel.chunk) === String(v) ? ' class="on"' : '';
@@ -4056,10 +4253,19 @@ function renderAttack(box, title) {
 
   if (!sel.from) {
     const any = validAttacks(state, player.id).length;
+    // Placing with "All" empties the pool and advances the phase in one tap, so
+    // the way back to a misplaced stack has to be offered here rather than in a
+    // reinforcement panel the player can no longer reach.
+    const rewind = canRewindToReinforcement(state);
     box.innerHTML = '<p class="prompt">' + (any
       ? 'Choose a territory to attack from. It needs <strong>2 troops or more</strong>.'
-      : 'No attack is available — every border you hold is either too thin or already yours.') + '</p>';
-    addRow(box, [['End attacks', 'btn', doEndAttack]]);
+      : 'No attack is available — every border you hold is either too thin or already yours.')
+      + '</p>'
+      + (rewind ? '<p class="hint">Placed troops in the wrong place? You can still undo '
+        + '\u2014 until the first roll.</p>' : '');
+    const rows = [['End attacks', 'btn', doEndAttack]];
+    if (rewind) rows.unshift(['Undo placement', 'btn ghost', doUndo]);
+    addRow(box, rows);
     return;
   }
 
@@ -4067,8 +4273,10 @@ function renderAttack(box, title) {
   if (!sel.to) {
     box.innerHTML = '<p class="prompt">Attacking from <strong>' + from.name + '</strong> (' +
       from.troopCount + ' troops). Choose an adjacent enemy territory.</p>';
-    addRow(box, [['Cancel', 'btn ghost', () => { sel.from = null; render(); }],
-                 ['End attacks', 'btn ghost', doEndAttack]]);
+    const rows = [['Cancel', 'btn ghost', () => { sel.from = null; render(); }],
+                  ['End attacks', 'btn ghost', doEndAttack]];
+    if (canRewindToReinforcement(state)) rows.push(['Undo placement', 'btn ghost', doUndo]);
+    addRow(box, rows);
     return;
   }
 
@@ -4087,12 +4295,27 @@ function renderAttack(box, title) {
       '</div>' +
       '<div class="odds-scale"><span>' + from.troopCount + ' troops</span><span>' + to.troopCount + ' troops</span></div>' +
       '<p class="odds-note">Odds of taking the territory outright</p>' +
-    '</div>' + renderDice();
+    '</div>';
+
+  // Buttons BEFORE the dice, so the row never moves.
+  //
+  // The results block is about 110px tall once dice and the pairing rows appear.
+  // Rendering it above the buttons pushed "Roll once" down the moment you used
+  // it, which a mouse just re-aims around but a thumb does not: you tap the same
+  // spot for the second roll, hit the pairing text instead, and end up poking at
+  // the map — which clears the target you were attacking. Keeping the row put
+  // makes repeated single rolls a matter of tapping the same place.
   addRow(box, [
     ['Roll once', 'btn', () => doAttack(false)],
     ['Press the attack', 'btn', () => doAttack(true)],
     ['Back', 'btn ghost', () => { sel.to = null; sel.lastCombat = null; render(); }],
   ]);
+
+  // Always appended, empty before the first roll, so nothing shifts when it fills.
+  const results = document.createElement('div');
+  results.className = 'roll-results';
+  results.innerHTML = renderDice();
+  box.appendChild(results);
 }
 
 function renderDice() {
@@ -4450,9 +4673,16 @@ function doEndTurn() {
 
 function doUndo() {
   if (busy) return;
+  const rewinding = canRewindToReinforcement(state);
   const r = undoPlacement(state);
   if (!r.ok) return flash(r.error);
   clearFlash();
+  // stepping back a phase is a bigger jump than a plain undo — say so
+  if (rewinding) {
+    sel.from = null; sel.to = null; sel.lastCombat = null;
+    flash('Back in reinforcement \u2014 ' + r.count +
+      (r.count === 1 ? ' troop' : ' troops') + ' returned to your pool.');
+  }
   render();
 }
 
@@ -4476,7 +4706,10 @@ function onKey(e) {
     return;
   }
   if (e.key === 'u' || e.key === 'U') {
-    if (undoableCount(state) > 0) { doUndo(); e.preventDefault(); }
+    if (undoableCount(state) > 0 || canRewindToReinforcement(state)) {
+      doUndo();
+      e.preventDefault();
+    }
     return;
   }
   if (e.key === ' ') {
@@ -4491,23 +4724,35 @@ document.addEventListener('keydown', onKey);
 
 function doAutoAssign() {
   if (busy) return;
-  autoAssignRemaining(state, pickClaim, pickDeploy);
+  autoAssignRemaining(state, pickClaim, planDeployment);
   clearFlash();
   render();
   runCpuTurns();
 }
 
-/** Step the CPUs through claiming and deploying, one visible action at a time. */
+/**
+ * Step the CPUs through setup.
+ *
+ * Claiming alternates visibly, one territory at a time — it is a public, turn-
+ * based decision and watching it is half the point. Deployment is not: every
+ * commander plans against the board as it stood when deployment opened, so the
+ * opponents commit in one go rather than watching you finish and answering it.
+ */
 async function runSetup() {
   if (busy) return;
   busy = true;
   try {
     let guard = 0;
-    while (state.setup.active && currentPlayer(state).isCPU && guard++ < 2000) {
+    while (state.setup.active && state.turn.phase === PHASES.CLAIM
+      && currentPlayer(state).isCPU && guard++ < 2000) {
       const r = takeSetupStep(state);
       if (!r || !r.ok) break;
       render();
       await sleep(pace().step * 0.45);
+    }
+    if (state.setup.active && state.turn.phase === PHASES.DEPLOY
+      && currentPlayer(state).isCPU) {
+      deployRemainingCpus(state, planDeployment);
     }
   } finally {
     busy = false;
