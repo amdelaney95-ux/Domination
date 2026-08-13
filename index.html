@@ -87,11 +87,16 @@ svg.board{width:100%;height:100%;display:block}
 .grain{pointer-events:none;opacity:.07}
 .vignette{pointer-events:none}
 .shelf{fill:none;stroke-linejoin:round;stroke-linecap:round}
-/* Region edges are texture, not a claim about adjacency: Voronoi cells cannot be
+/* Fills carry no edge of their own — they are blurred, so any stroke would smear
+   with them. Borders are a separate unblurred layer.
+   Region edges are texture, not a claim about adjacency: Voronoi cells cannot be
    made to match an arbitrary graph, and a handful of them touch where the game
-   says there is no border (and vice versa). The links below are the truth, so
-   these are kept faint deliberately. */
-.region{stroke:#0e1b2955;stroke-width:.8;stroke-linejoin:round}
+   says there is no border (and vice versa). The links are the truth, so these are
+   kept faint, and dashed the way a printed map rules a political boundary rather
+   than a coast. */
+.region{stroke:none}
+.region-edge{fill:none;stroke:#0b1620;stroke-width:.9;opacity:.5;
+  stroke-dasharray:3.5 3;stroke-linejoin:round}
 .landmass{fill:none;stroke:#5a7d99;stroke-width:1.4;stroke-linejoin:round;
   transition:stroke .45s ease,stroke-width .45s ease,filter .45s ease}
 .landmass.held{stroke-width:2.6}
@@ -117,6 +122,21 @@ svg.board{width:100%;height:100%;display:block}
 .compass-needle{fill:var(--brass);opacity:.6;stroke:none}
 .compass-label{font-family:var(--font-map);font-size:9px;letter-spacing:.1em;
   fill:var(--brass);opacity:.65;text-anchor:middle}
+.band-rule{stroke:var(--brass);stroke-width:.7;opacity:.34}
+.band-title{font-family:var(--font-map);font-weight:700;font-size:26px;
+  letter-spacing:.26em;text-transform:uppercase;fill:var(--sand);opacity:.88}
+.band-title tspan{fill:var(--brass)}
+.band-sub{font-family:var(--font-map);font-size:9.5px;letter-spacing:.24em;
+  text-transform:uppercase;fill:var(--sand-dim);opacity:.8}
+.band-head{font-family:var(--font-map);font-size:9px;letter-spacing:.2em;
+  text-transform:uppercase;fill:var(--brass);opacity:.72}
+.band-label{font-family:var(--font-map);font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;fill:var(--sand-dim);opacity:.9}
+.band-note{font-family:var(--font-body);font-size:10px;fill:var(--sand-dim);opacity:.72}
+.key-terrain{fill:none;stroke:var(--sand);stroke-width:1.1;opacity:.62;
+  stroke-linecap:round;stroke-linejoin:round}
+.key-terrain.filled{fill:var(--sand);stroke:none;opacity:.62}
+.key-symbol{fill:var(--sand);opacity:.6;stroke:#0e1b29;stroke-width:.7;paint-order:stroke}
 .link{stroke:#8fb0c9;stroke-width:1.35;opacity:.8;stroke-linecap:round}
 .sea-route{fill:none;stroke:#7ea3bd;stroke-width:1.3;stroke-dasharray:6 5;
   stroke-linecap:round;opacity:.72}
@@ -124,7 +144,11 @@ svg.board{width:100%;height:100%;display:block}
 .port{fill:#7ea3bd;opacity:.62}
 .wrap-tick{font-family:var(--font-data);font-size:9px;fill:var(--sand-dim);opacity:.75}
 
-.terr .disc{stroke:var(--ocean-deep);stroke-width:2;transition:r .12s ease,fill .18s ease}
+/* The shadow does real work now the ground is coloured: it separates a marker
+   from land of its own hue, which is the one case where ownership got hard to
+   read. */
+.terr .disc{stroke:var(--ocean-deep);stroke-width:2;transition:r .12s ease,fill .18s ease;
+  filter:drop-shadow(0 1px 2px rgba(6,14,22,.75))}
 .terr .ring{fill:none;stroke:none;stroke-width:2}
 .terr .troops{font-family:var(--font-data);font-size:13px;font-weight:600;
   text-anchor:middle;dominant-baseline:central;pointer-events:none}
@@ -348,7 +372,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
   .main{flex-direction:column}
   .panel{width:100%;border-left:none;border-top:1px solid var(--chart-line)}
   .board-wrap{padding:4px}
-  svg.board{height:auto;aspect-ratio:1016/596}
+  svg.board{height:auto;aspect-ratio:1016/672}
   .action{overflow:visible}
   .log{max-height:104px}
 }
@@ -364,6 +388,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
       <dl><dt>Round</dt><dd id="r-round">—</dd></dl>
       <dl><dt>Phase</dt><dd id="r-phase">—</dd></dl>
       <dl><dt>Commander</dt><dd id="r-player">—</dd></dl>
+      <dl><dt>Seat</dt><dd id="r-seat">—</dd></dl>
       <div class="speed" id="speed"></div>
       <button class="btn ghost" id="btn-save" style="padding:4px 10px;font-size:10px">Save</button>
       <button class="btn ghost" id="btn-concede" style="padding:4px 10px;font-size:10px">Concede</button>
@@ -372,7 +397,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 
   <div class="main">
     <div class="board-wrap">
-      <svg class="board" id="board" viewBox="-28 -28 1016 596" role="img" aria-label="World map"></svg>
+      <svg class="board" id="board" viewBox="-28 -28 1016 672" role="img" aria-label="World map"></svg>
     </div>
 
     <aside class="panel">
@@ -425,6 +450,14 @@ input[type=range]{width:100%;accent-color:var(--brass)}
       <select id="in-start">
         <option value="draft" selected>Draft — claim them one at a time</option>
         <option value="auto">Auto-assign — deal them at random</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="in-order">Turn order</label>
+      <select id="in-order">
+        <option value="first" selected>You go first</option>
+        <option value="random">Random — anyone may open</option>
       </select>
     </div>
 
@@ -967,8 +1000,12 @@ const PLAYER_COLORS = ['#d4453a', '#3d8fd6', '#3fa87a', '#9b5fc0', '#e0a53c', '#
  * @param {number} [options.seed]
  * @param {boolean} [options.draft]  true = players claim territories one at a time;
  *                                   false = territories dealt at random (auto-assign)
+ * @param {boolean} [options.randomiseOrder]  shuffle who sits where in the turn order
  */
-function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, draft = false } = {}) {
+function createGame({
+  humanName = 'You', cpuDifficulties = ['medium'], seed,
+  draft = false, randomiseOrder = false,
+} = {}) {
   if (cpuDifficulties.length < 1 || cpuDifficulties.length > 5) {
     throw new Error('Game requires between 1 and 5 CPU opponents');
   }
@@ -987,6 +1024,14 @@ function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, dra
     })),
   ];
 
+  /**
+   * Turn order is the order of this array. Moving first is a measurable
+   * advantage — the benchmark has shown identical AI tiers winning at different
+   * rates purely by seat — so shuffling it is the fix, and the human keeps first
+   * seat only when they ask for it.
+   */
+  const seated = randomiseOrder ? rng.shuffle(players) : players;
+
   const territories = {};
   for (const id of TERRITORY_IDS) {
     territories[id] = { ...TERRITORIES[id], ownerId: null, troopCount: 0 };
@@ -994,7 +1039,7 @@ function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, dra
 
   const armies = STARTING_ARMIES[players.length] ?? 20;
   const state = {
-    players,
+    players: seated,
     territories,
     continents: CONTINENTS,
     deck: buildDeck(rng),
@@ -1014,7 +1059,7 @@ function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, dra
     history: [],
     endedBy: null,          // 'conquest' | 'elimination' | 'concede'
   };
-  for (const p of players) {
+  for (const p of seated) {
     state.stats[p.id] = {
       battles: 0,
       troopsLost: 0,
@@ -1030,7 +1075,7 @@ function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, dra
       capturedFrom: {},
     };
   }
-  for (const p of players) state.setup.armiesRemaining[p.id] = armies;
+  for (const p of seated) state.setup.armiesRemaining[p.id] = armies;
 
   if (draft) {
     // Seat 0 (the human) picks first — first pick is a real advantage.
@@ -1039,7 +1084,7 @@ function createGame({ humanName = 'You', cpuDifficulties = ['medium'], seed, dra
   } else {
     dealTerritories(state, rng);
     placeStartingArmies(state, rng, armies);
-    for (const p of players) state.setup.armiesRemaining[p.id] = 0;
+    for (const p of seated) state.setup.armiesRemaining[p.id] = 0;
   }
   return state;
 }
@@ -1089,6 +1134,16 @@ function placeStartingArmies(state, rng, armiesPerPlayer) {
 const currentPlayer = (state) => state.players[state.turn.playerIndex];
 
 const getPlayer = (state, playerId) => state.players.find((p) => p.id === playerId);
+
+/**
+ * The person at the keyboard, found rather than assumed.
+ *
+ * Everything used to reach for `players[0]`, which was the human only because
+ * they were always seated first. With the order shuffled that is no longer true,
+ * and an assumption like that fails quietly — showing you someone else's cards
+ * rather than throwing.
+ */
+const humanPlayer = (state) => state.players.find((p) => !p.isCPU) || state.players[0];
 
 const territoriesOf = (state, playerId) =>
   Object.values(state.territories).filter((t) => t.ownerId === playerId);
@@ -2395,10 +2450,26 @@ const PLATE_PADDING = 14;
  * valid; the plate simply got bigger around them.
  */
 const FRAME_MARGIN = 28;
+
+/**
+ * The bottom margin is deeper than the others, to carry a title block and key.
+ *
+ * A search for clear water big enough to hold a legend found *no* placement at
+ * any useful size — after coastlines, markers, lettering, card symbols, terrain,
+ * six continent cartouches, five ocean labels and a compass, the map has nothing
+ * left. Rather than evict something, the plate grows a band along the bottom edge,
+ * which is where a printed board puts its title and key anyway. No map coordinate
+ * moves.
+ */
+const FRAME_MARGIN_BOTTOM = 104;
+const BAND_TOP = BOARD_HEIGHT + 12;
+
+/** How far the band's content may reach before it collides with the frame. */
+const BAND_CONTENT_DEPTH = 74;
 const PLATE_X = -FRAME_MARGIN;
 const PLATE_Y = -FRAME_MARGIN;
 const PLATE_WIDTH = BOARD_WIDTH + FRAME_MARGIN * 2;
-const PLATE_HEIGHT = BOARD_HEIGHT + FRAME_MARGIN * 2;
+const PLATE_HEIGHT = BOARD_HEIGHT + FRAME_MARGIN + FRAME_MARGIN_BOTTOM;
 
 /* ===== src/ui/geography.js ===== */
 /**
@@ -3013,6 +3084,62 @@ function pointInPoly(x, y, poly) {
   return inside;
 }
 
+// ---------------------------------------------------------------------------
+// Continent colour families
+// ---------------------------------------------------------------------------
+
+/**
+ * One hue per continent, the way a printed Risk board does it.
+ *
+ * Continent colour is the information the game is actually played on — whether
+ * you are close to a bonus, whose sphere you are pushing into — so it belongs in
+ * the loudest channel the map has. Terrain then survives as a shade *within* the
+ * family rather than as its own palette.
+ *
+ * Kept dark and heavily desaturated on purpose. The saturated version of these
+ * hues is what the player markers use, and if the ground competes with them the
+ * board stops answering "who owns this" at a glance.
+ */
+const CONTINENT_HUES = {
+  northAmerica: { h: 44,  s: 22, l: 27 },   // gold
+  southAmerica: { h: 8,   s: 25, l: 27 },   // brick
+  europe:       { h: 211, s: 21, l: 27 },   // blue
+  africa:       { h: 28,  s: 27, l: 28 },   // ochre
+  asia:         { h: 132, s: 18, l: 25 },   // green
+  australia:    { h: 286, s: 18, l: 27 },   // plum
+};
+
+/**
+ * How each terrain shifts its continent's hue: lightness, saturation, and a
+ * small hue nudge. Deserts run lighter and warmer, jungle darker and greener,
+ * ice paler and cooler — recognisable as terrain without leaving the family.
+ */
+const TERRAIN_SHIFT = {
+  ice:      { dl: 11, ds: -11, dh: 10 },
+  mountain: { dl: 4,  ds: -8,  dh: -2 },
+  forest:   { dl: -4, ds: 4,   dh: 14 },
+  jungle:   { dl: -7, ds: 8,   dh: 18 },
+  desert:   { dl: 8,  ds: 9,   dh: -7 },
+  plains:   { dl: 1,  ds: 1,   dh: 4 },
+};
+
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+/** The fill for one territory: its continent's hue, shaded by its terrain. */
+function territoryFill(continentId, terrain) {
+  const base = CONTINENT_HUES[continentId];
+  if (!base) return '#3d4a55';
+  const shift = TERRAIN_SHIFT[terrain] || TERRAIN_SHIFT.plains;
+  const h = (base.h + shift.dh + 360) % 360;
+  // Ceilings matter more than the values. The player markers live around 55-60%
+  // lightness at high saturation; ground that climbs into that range starts
+  // competing with them, and a green marker on green Asia is the first thing to
+  // become hard to read.
+  const s = clamp(base.s + shift.ds, 8, 42);
+  const l = clamp(base.l + shift.dl, 14, 40);
+  return `hsl(${h} ${s}% ${l}%)`;
+}
+
 /* ===== namespace shim for the flattened bundle ===== */
 const engine = {
   beginTurn, tradeInCards, placeArmies, endReinforcement,
@@ -3120,6 +3247,7 @@ $('btn-start').addEventListener('click', () => {
     cpuDifficulties: difficulties,
     seed: seedInput === '' ? Math.floor(Math.random() * 1e9) : Number(seedInput),
     draft: drafting,
+    randomiseOrder: $('in-order').value === 'random',
   });
   // In a draft the first real turn only opens once every army is placed.
   if (!drafting) beginTurn(state);
@@ -3178,7 +3306,7 @@ function doLoad(file) {
 function doConcede() {
   if (!state || busy) return;
   if (state.turn.phase === PHASES.GAME_OVER) return;
-  const human = state.players[0];
+  const human = humanPlayer(state);
   if (human.eliminated) return;
   if (!window.confirm('Concede the game? Your territories pass to the leader and the campaign ends.')) {
     return;
@@ -3559,6 +3687,14 @@ function drawBoard() {
   // outline: ocean depth bands stepping outward, then biome-filled territory
   // regions clipped to the shore, then the coast itself on top.
   const defs = make('defs');
+  // Blur for the terrain fills. Applied to the group, never to individual paths,
+  // so neighbouring shades actually mix rather than each blurring alone.
+  const blend = make('filter', {
+    id: 'terrain-blend', x: '-10%', y: '-10%', width: '120%', height: '120%',
+  });
+  blend.appendChild(make('feGaussianBlur', { stdDeviation: '7', edgeMode: 'duplicate' }));
+  defs.appendChild(blend);
+
   const shelf = make('g');
   const fills = make('g');
   const land = make('g');
@@ -3584,8 +3720,14 @@ function drawBoard() {
     clip.appendChild(make('path', { d: d }));
     defs.appendChild(clip);
 
-    // one filled region per territory on this landmass
-    const group = make('g', { 'clip-path': 'url(#' + clipId + ')' });
+    // One filled region per territory. The group is blurred and then clipped —
+    // clipping happens after filtering, so terrain shades bleed into each other
+    // across territory lines but stop dead at the coastline. Continent edges stay
+    // hard for free, because each landmass has its own clip.
+    const group = make('g', {
+      'clip-path': 'url(#' + clipId + ')', filter: 'url(#terrain-blend)',
+    });
+    const edges = make('g', { 'clip-path': 'url(#' + clipId + ')' });
     const hosted = Object.keys(LAYOUT)
       .filter((id) => TERRITORIES[id].continentId === m.continentId
         && inLandmass(LAYOUT[id].x, LAYOUT[id].y, m.points))
@@ -3596,13 +3738,15 @@ function drawBoard() {
       if (cell.length < 3) continue;
       // kept for the lettering pass, which needs the same regions
       regionCells[node.id] = { cell: cell, land: m.points };
+      const d = 'M' + cell.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z';
       group.appendChild(make('path', {
-        class: 'region',
-        d: 'M' + cell.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z',
-        fill: BIOME_COLORS[TERRAIN[node.id]] || '#3d4a55',
+        class: 'region', d: d,
+        fill: territoryFill(TERRITORIES[node.id].continentId, TERRAIN[node.id]),
       }));
+      edges.appendChild(make('path', { class: 'region-edge', d: d }));
     }
     fills.appendChild(group);
+    fills.appendChild(edges);
 
     const path = make('path', { class: 'landmass', d: d });
     path.dataset.continent = m.continentId;
@@ -3894,6 +4038,7 @@ function drawBoard() {
     fill: 'url(#vignette)',
   }));
 
+  svg.appendChild(drawTitleBand());
   svg.appendChild(drawFrame());
 }
 
@@ -3913,20 +4058,22 @@ function drawFrame() {
     class: 'frame-inner', x: x + 5, y: y + 5, width: w - 10, height: h - 10,
   }));
 
-  // degree ticks, longer every fifth, reaching outward from the inner rule
+  // Degree ticks hug the map itself, not the plate. With a deep bottom band the
+  // two are no longer the same rectangle, and ticks along the plate's bottom edge
+  // would be measuring the title block rather than the world.
   const tick = (x1, y1, x2, y2) =>
     g.appendChild(make('line', { class: 'frame-tick', x1: x1, y1: y1, x2: x2, y2: y2 }));
   let i = 0;
   for (let gx = 0; gx <= BOARD_WIDTH; gx += 40, i++) {
     const len = i % 5 === 0 ? 9 : 5;
-    tick(gx, y + 5, gx, y + 5 - len);
-    tick(gx, y + h - 5, gx, y + h - 5 + len);
+    tick(gx, -6, gx, -6 - len);
+    tick(gx, BOARD_HEIGHT + 6, gx, BOARD_HEIGHT + 6 + len);
   }
   i = 0;
   for (let gy = 0; gy <= BOARD_HEIGHT; gy += 30, i++) {
     const len = i % 5 === 0 ? 9 : 5;
-    tick(x + 5, gy, x + 5 - len, gy);
-    tick(x + w - 5, gy, x + w - 5 + len, gy);
+    tick(-6, gy, -6 - len, gy);
+    tick(BOARD_WIDTH + 6, gy, BOARD_WIDTH + 6 + len, gy);
   }
 
   // corner blocks
@@ -3940,6 +4087,97 @@ function drawFrame() {
       d: 'M ' + (cx + sx * arm) + ' ' + cy + ' L ' + cx + ' ' + cy + ' L ' + cx + ' ' + (cy + sy * arm),
     }));
   }
+  return g;
+}
+
+/**
+ * The title band: name, key to the terrain glyphs, key to the card symbols.
+ *
+ * Nothing on the board previously explained that the shield above Alaska means
+ * an infantry card, or that crosshatch means ice — the map had symbols and no
+ * key. This is also the most "printed board" object still missing, so it does
+ * two jobs at once.
+ */
+function drawTitleBand() {
+  const g = make('g', { class: 'title-band' });
+  const top = BAND_TOP;
+
+  g.appendChild(make('line', {
+    class: 'band-rule', x1: 0, y1: top, x2: BOARD_WIDTH, y2: top,
+  }));
+
+  // --- title block ---
+  const title = make('text', { class: 'band-title', x: 0, y: top + 32 });
+  title.textContent = 'DOMIN';
+  const accent = make('tspan');
+  accent.textContent = 'I';
+  title.appendChild(accent);
+  const rest = make('tspan');
+  rest.textContent = 'ON';
+  title.appendChild(rest);
+  g.appendChild(title);
+
+  const sub = make('text', { class: 'band-sub', x: 2, y: top + 49 });
+  sub.textContent = 'A game of world conquest';
+  g.appendChild(sub);
+
+  const scale = make('text', { class: 'band-note', x: 2, y: top + 66 });
+  scale.textContent = '42 territories \u00b7 6 continents \u00b7 hold one whole for its bonus';
+  g.appendChild(scale);
+
+  g.appendChild(make('line', {
+    class: 'band-rule', x1: 320, y1: top + 8, x2: 320, y2: top + 74,
+  }));
+
+  // --- terrain key ---
+  const terrainHead = make('text', { class: 'band-head', x: 346, y: top + 20 });
+  terrainHead.textContent = 'Terrain';
+  g.appendChild(terrainHead);
+
+  const kinds = ['mountain', 'forest', 'jungle', 'desert', 'ice', 'plains'];
+  kinds.forEach((kind, i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const kx = 352 + col * 100, ky = top + 40 + row * 22;
+    g.appendChild(make('path', {
+      class: 'key-terrain' + (kind === 'mountain' ? ' filled' : ''),
+      d: TERRAIN_GLYPHS[kind],
+      transform: 'translate(' + kx + ',' + ky + ') scale(1.25)',
+    }));
+    const label = make('text', { class: 'band-label', x: kx + 13, y: ky + 3.5 });
+    label.textContent = kind;
+    g.appendChild(label);
+  });
+
+  g.appendChild(make('line', {
+    class: 'band-rule', x1: 646, y1: top + 8, x2: 646, y2: top + 74,
+  }));
+
+  // --- card symbol key ---
+  const cardHead = make('text', { class: 'band-head', x: 672, y: top + 20 });
+  cardHead.textContent = 'Card symbols';
+  g.appendChild(cardHead);
+
+  ['infantry', 'cavalry', 'artillery'].forEach((kind, i) => {
+    const kx = 680, ky = top + 36 + i * 17;
+    g.appendChild(make('path', {
+      class: 'key-symbol', d: CARD_GLYPHS[kind],
+      transform: 'translate(' + kx + ',' + ky + ') scale(0.85)',
+    }));
+    const label = make('text', { class: 'band-label', x: kx + 13, y: ky + 3.5 });
+    label.textContent = kind;
+    g.appendChild(label);
+  });
+
+  const cardNote = make('text', { class: 'band-note', x: 772, y: top + 40 });
+  cardNote.textContent = 'Each territory carries one symbol.';
+  g.appendChild(cardNote);
+  const cardNote2 = make('text', { class: 'band-note', x: 772, y: top + 54 });
+  cardNote2.textContent = 'Take a territory in a turn to earn a card;';
+  g.appendChild(cardNote2);
+  const cardNote3 = make('text', { class: 'band-note', x: 772, y: top + 68 });
+  cardNote3.textContent = 'trade three alike or one of each for troops.';
+  g.appendChild(cardNote3);
+
   return g;
 }
 
@@ -3975,7 +4213,9 @@ function render() {
   $('r-phase').textContent = PHASE_NAMES[state.turn.phase] || state.turn.phase;
   $('r-player').textContent = player.name;
   $('r-player').style.color = player.color;
-  const playable = state.turn.phase !== PHASES.GAME_OVER && !state.players[0].eliminated;
+  const seat = state.players.findIndex((p) => !p.isCPU) + 1;
+  $('r-seat').textContent = seat + ' of ' + state.players.length;
+  const playable = state.turn.phase !== PHASES.GAME_OVER && !humanPlayer(state).eliminated;
   $('btn-concede').disabled = !playable;
   $('btn-save').disabled = false;
   renderRoster();
@@ -4198,7 +4438,7 @@ function renderClaim(box, title) {
 
 function renderDeploy(box, title) {
   title.textContent = 'Deploy';
-  const left = armiesLeftToPlace(state, state.players[0].id);
+  const left = armiesLeftToPlace(state, humanPlayer(state).id);
   box.innerHTML = '<p class="prompt"><strong>' + left + '</strong> arm' + (left === 1 ? 'y' : 'ies') +
     ' left to place. Put them anywhere you hold — this is your chance to build a wall ' +
     'before anyone moves.</p>' +
@@ -4443,7 +4683,7 @@ function addRow(box, buttons) {
 // ------------------------------------------------------------- the cards ---
 
 function renderCards() {
-  const human = state.players[0];
+  const human = humanPlayer(state);
   const hand = human.cards;
   $('card-count').textContent = hand.length ? '(' + hand.length + ')' : '';
 
@@ -4829,7 +5069,7 @@ function clearFlash() {
  */
 function showResult() {
   const winner = state.winner;
-  const human = state.players[0];
+  const human = humanPlayer(state);
   const won = winner && winner.id === human.id;
   const conceded = state.endedBy === 'concede';
 
