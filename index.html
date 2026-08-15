@@ -27,13 +27,63 @@
   --brass:#c8a35a;
   --brass-dim:#8a7038;
   --alert:#e05a47;
+  /* Board and panel tokens. These are the ATLAS theme's values, duplicated here
+     deliberately as the fallback for anything painted before applyTheme() runs —
+     the setup sheet is up before a game exists. A test parses this block and
+     requires it to match THEMES.atlas.vars exactly, so the two cannot drift. */
+  --coast:#5a7d99;
+  --region-edge:#0b1620;
+  --terrain-ink:#0e1b29;
+  --sea-label:#456478;
+  --link:#8fb0c9;
+  --sea-route:#7ea3bd;
+  --port:#7ea3bd;
+  --cartouche-fill:#0e1b2999;
+  --card-symbol:#e8dcc4;
+  --symbol-halo:#0e1b29;
+  --label-ink:#dbe6ee;
+  --label-ink-water:#b9cddc;
+  --label-halo:#0a141e;
+  --unclaimed:#8d9aa6;
+  --no-owner:#33465a;
+  --tip-fill:#0a141ef2;
+  --scrim:#0a141ef2;
+  --brass-tint:#c8a35a12;
+  --brass-tint-strong:#c8a35a1a;
+  --die-att:#c9483c;
+  --die-att-ink:#f4ece0;
+  --die-att-edge:#7e2b23;
+  --die-def:#e6e0d2;
+  --die-def-ink:#1d2a33;
+  --die-def-edge:#a49c88;
+  --die-shadow:#0a141e;
+  --pair-att:#e0685c;
+  --pair-def:#e6e0d2;
+  --win:#5fbf8a;
+  --grain-opacity:.07;
+  --sea:#0e1b29;
+  --dim-opacity:.45;
+  --ink-on-accent:#0a141e;
+  --inset:#0a141e;
+  --marker-edge:#0a141e;
+  --marker-shadow:0 1px 2px rgba(6,14,22,.75);
+  --table:#0a141e;
+  --table-lit:#101f2e;
+  --region-edge-dash:3.5 3;
+  --region-edge-opacity:.5;
+  --label-halo-opacity:.72;
   --font-map:"Barlow Condensed",'Arial Narrow',sans-serif;
   --font-body:"Barlow",system-ui,sans-serif;
   --font-data:"IBM Plex Mono",ui-monospace,Menlo,monospace;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{background:var(--ocean-deep);color:var(--sand);font-family:var(--font-body);font-size:14px;overflow:hidden}
+/* The surround reads as the surface the board is lying on rather than as the
+   page behind it. A flat fill made the plate look pasted on; a soft pool of
+   light under it, darkening to the corners, does most of the work of "a board
+   on a table" for the cost of one gradient. */
+body{background:var(--table);color:var(--sand);font-family:var(--font-body);font-size:14px;overflow:hidden}
+.board-wrap{background:radial-gradient(ellipse at 50% 42%,var(--table-lit) 0%,var(--table) 72%)}
 button{font-family:var(--font-map);cursor:pointer;border:none;background:none;color:inherit}
 
 /* Touch behaviour.
@@ -68,10 +118,10 @@ button:disabled{cursor:not-allowed;opacity:.35}
 .speed button{padding:3px 9px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--sand-dim);border-right:1px solid var(--chart-line)}
 .speed button:last-child{border-right:none}
-.speed button.on{background:var(--brass);color:var(--ocean-deep);font-weight:600}
-.terr.unclaimed .disc{fill:#8d9aa6}
-.card-symbol{fill:#e8dcc4;opacity:.5;pointer-events:none;
-  stroke:#0e1b29;stroke-width:.8;paint-order:stroke}
+.speed button.on{background:var(--brass);color:var(--ink-on-accent);font-weight:600}
+.terr.unclaimed .disc{fill:var(--unclaimed)}
+.card-symbol{fill:var(--card-symbol);opacity:.5;pointer-events:none;
+  stroke:var(--symbol-halo);stroke-width:.8;paint-order:stroke}
 .terr.unclaimed .label{fill:var(--sand-dim);opacity:.75}
 .main{display:flex;flex:1;min-height:0}
 .board-wrap{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:8px}
@@ -79,45 +129,51 @@ svg.board{width:100%;height:100%;display:block}
 
 /* ---------- chart map ---------- */
 .plate-bg{fill:var(--ocean)}
+.sea{fill:var(--sea)}
 .graticule{stroke:var(--chart-line-soft);stroke-width:.5;opacity:.5}
 .frame-outer{fill:none;stroke:var(--brass);stroke-width:1.8;opacity:.62}
 .frame-inner{fill:none;stroke:var(--brass);stroke-width:.8;opacity:.44}
 .frame-tick{stroke:var(--brass);stroke-width:1;opacity:.5}
 .frame-corner{fill:none;stroke:var(--brass);stroke-width:1.2;opacity:.75}
-.grain{pointer-events:none;opacity:.07}
+.grain{pointer-events:none;opacity:var(--grain-opacity)}
 .vignette{pointer-events:none}
 .shelf{fill:none;stroke-linejoin:round;stroke-linecap:round}
 /* Fills carry no edge of their own — they are blurred, so any stroke would smear
    with them. Borders are a separate unblurred layer.
-   Region edges are texture, not a claim about adjacency: Voronoi cells cannot be
-   made to match an arbitrary graph, and a handful of them touch where the game
-   says there is no border (and vice versa). The links are the truth, so these are
-   kept faint, and dashed the way a printed map rules a political boundary rather
-   than a coast. */
+   Region edges ARE the adjacency: the node coordinates were tuned until the
+   drawn regions matched the graph exactly, and validate-geography fails the
+   build if that ever stops being true. So these are the map's statement about
+   who borders whom, which is why the printed board draws no lines between
+   territory centres any more. */
 .region{stroke:none}
-.region-edge{fill:none;stroke:#0b1620;stroke-width:.9;opacity:.5;
-  stroke-dasharray:3.5 3;stroke-linejoin:round}
-.landmass{fill:none;stroke:#5a7d99;stroke-width:1.4;stroke-linejoin:round;
+.region-edge{fill:none;stroke:var(--region-edge);stroke-width:.9;
+  opacity:var(--region-edge-opacity);
+  stroke-dasharray:var(--region-edge-dash);stroke-linejoin:round}
+.landmass{fill:none;stroke:var(--coast);stroke-width:1.4;stroke-linejoin:round;
   transition:stroke .45s ease,stroke-width .45s ease,filter .45s ease}
 .landmass.held{stroke-width:2.6}
-.terrain{fill:none;stroke:#0e1b29;stroke-width:1;opacity:.3;
+.terrain{fill:none;stroke:var(--terrain-ink);stroke-width:1;opacity:.3;
   stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
-.terrain.filled{fill:#0e1b29;stroke:none}
+.terrain.filled{fill:var(--terrain-ink);stroke:none}
 .cartouche{pointer-events:none;transition:opacity .45s ease}
-.cartouche-plate{fill:#0e1b2999;stroke:var(--sand);stroke-width:.9;opacity:.5;
+.cartouche-plate{fill:var(--cartouche-fill);stroke:var(--sand);stroke-width:.9;opacity:.5;
   transition:stroke .45s ease,opacity .45s ease}
 .cartouche-rule{stroke:var(--sand);stroke-width:.5;opacity:.34;
   transition:stroke .45s ease,opacity .45s ease}
 .cartouche-name{font-family:var(--font-map);text-transform:uppercase;
   fill:var(--sand);opacity:.62;text-anchor:middle;
   transition:fill .45s ease,opacity .45s ease}
+.cartouche-badge{fill:none;stroke:var(--brass);stroke-width:1.1;opacity:.7;
+  transition:stroke .45s ease,opacity .45s ease}
 .cartouche-bonus{font-family:var(--font-data);font-weight:600;fill:var(--brass);
-  opacity:.85;text-anchor:middle;transition:fill .45s ease,opacity .45s ease}
+  opacity:.9;text-anchor:middle;dominant-baseline:middle;
+  transition:fill .45s ease,opacity .45s ease}
+.cartouche.held .cartouche-badge{opacity:1;stroke-width:1.5}
 .cartouche.held .cartouche-plate{opacity:.95;stroke-width:1.3}
 .cartouche.held .cartouche-name{opacity:1;font-weight:600}
 .cartouche.held .cartouche-rule{opacity:.75}
 .sea-label{font-family:var(--font-map);font-style:italic;letter-spacing:.22em;
-  fill:#456478;opacity:.75;text-anchor:middle;pointer-events:none}
+  fill:var(--sea-label);opacity:.75;text-anchor:middle;pointer-events:none}
 .compass{fill:none;stroke:var(--brass);stroke-width:1;opacity:.5}
 .compass-needle{fill:var(--brass);opacity:.6;stroke:none}
 .compass-label{font-family:var(--font-map);font-size:9px;letter-spacing:.1em;
@@ -136,19 +192,26 @@ svg.board{width:100%;height:100%;display:block}
 .key-terrain{fill:none;stroke:var(--sand);stroke-width:1.1;opacity:.62;
   stroke-linecap:round;stroke-linejoin:round}
 .key-terrain.filled{fill:var(--sand);stroke:none;opacity:.62}
-.key-symbol{fill:var(--sand);opacity:.6;stroke:#0e1b29;stroke-width:.7;paint-order:stroke}
-.link{stroke:#8fb0c9;stroke-width:1.35;opacity:.8;stroke-linecap:round}
-.sea-route{fill:none;stroke:#7ea3bd;stroke-width:1.3;stroke-dasharray:6 5;
+.key-symbol{fill:var(--sand);opacity:.6;stroke:var(--symbol-halo);stroke-width:.7;paint-order:stroke}
+/* Only drawn when a theme opts in — see `landLinks`. The regions carry the
+   adjacency now, so this is a stylistic choice, not information. */
+.link{stroke:var(--link);stroke-width:1.35;opacity:.8;stroke-linecap:round}
+.sea-route{fill:none;stroke:var(--sea-route);stroke-width:1.3;stroke-dasharray:6 5;
   stroke-linecap:round;opacity:.72}
 .sea-route.wrap{opacity:.6}
-.port{fill:#7ea3bd;opacity:.62}
+.port{fill:var(--port);opacity:.62}
 .wrap-tick{font-family:var(--font-data);font-size:9px;fill:var(--sand-dim);opacity:.75}
 
 /* The shadow does real work now the ground is coloured: it separates a marker
    from land of its own hue, which is the one case where ownership got hard to
    read. */
-.terr .disc{stroke:var(--ocean-deep);stroke-width:2;transition:r .12s ease,fill .18s ease;
-  filter:drop-shadow(0 1px 2px rgba(6,14,22,.75))}
+.terr .disc{stroke:var(--marker-edge);stroke-width:2;transition:r .12s ease,fill .18s ease;
+  filter:drop-shadow(var(--marker-shadow))}
+/* Lit from the top left and shaded at the rim, so the marker reads as a counter
+   sitting on the board instead of a circle printed on it. Shares the disc's
+   radius — every place that animates one animates both, or a shrinking
+   territory sheds its highlight. */
+.terr .bevel{pointer-events:none;transition:r .12s ease}
 .terr .ring{fill:none;stroke:none;stroke-width:2}
 .terr .troops{font-family:var(--font-data);font-size:13px;font-weight:600;
   text-anchor:middle;dominant-baseline:central;pointer-events:none}
@@ -156,20 +219,27 @@ svg.board{width:100%;height:100%;display:block}
    thin — enough to hold the letters over terrain glyphs without reading as a
    chip printed on top of the map. */
 .terr .label{font-family:var(--font-map);text-transform:uppercase;
-  text-anchor:middle;fill:#dbe6ee;opacity:.9;pointer-events:none;
-  paint-order:stroke;stroke:var(--ocean-deep);stroke-width:2.4px;stroke-opacity:.72}
-.terr .label.water{fill:#b9cddc;opacity:.82}
-.terr.dim .label{opacity:.4}
+  text-anchor:middle;fill:var(--label-ink);opacity:.9;pointer-events:none;
+  paint-order:stroke;stroke:var(--label-halo);stroke-width:2.4px;
+  stroke-opacity:var(--label-halo-opacity)}
+.terr .label.water{fill:var(--label-ink-water);opacity:.82}
+/* Dimming marks what you cannot act on. It used to fade the whole group —
+   marker, numeral AND the lettered name — which during reinforcement is 31 of
+   42 territories, so the board you actually look at was a mostly-faded one and
+   the lettering was invisible on three quarters of it. Fade the marker; leave
+   the land, the names, the terrain and the card symbols alone. */
+.terr.dim .disc,.terr.dim .ring,.terr.dim .troops,.terr.dim .bevel{opacity:var(--dim-opacity)}
 .terr.actionable{cursor:pointer}
 .terr.actionable .ring{stroke:var(--brass);opacity:.9}
-@media (hover: hover){ .terr.actionable:hover .disc{r:19} }
+@media (hover: hover){
+  .terr.actionable:hover .disc,.terr.actionable:hover .bevel{r:19}
+}
 .terr.target .ring{stroke:var(--alert);opacity:1;stroke-dasharray:3 3}
 .terr.selected .ring{stroke:var(--sand);opacity:1;stroke-width:3;stroke-dasharray:none}
 .terr.selected .label{fill:var(--sand)}
-.terr.dim{opacity:.4}
 .terr.neighbour .ring{stroke:var(--sand);opacity:.55;stroke-dasharray:2 3}
 .terr.hovered .disc{stroke:var(--sand);stroke-width:2.5}
-.tip-box{fill:#0a141ef2;stroke:var(--chart-line);stroke-width:1;rx:4}
+.tip-box{fill:var(--tip-fill);stroke:var(--chart-line);stroke-width:1;rx:4}
 .tip-name{font-family:var(--font-map);font-size:12px;letter-spacing:.06em;fill:var(--sand)}
 .tip-line{font-family:var(--font-data);font-size:10px;fill:var(--sand-dim)}
 .tip-sym{opacity:.85}
@@ -214,10 +284,10 @@ svg.board{width:100%;height:100%;display:block}
 .flash-msg{font-size:12.5px;color:var(--alert);margin:0 0 10px;line-height:1.45}
 .flash-msg[hidden]{display:none}
 .btn{display:inline-block;padding:8px 15px;border:1px solid var(--brass-dim);
-  background:#c8a35a12;color:var(--brass);font-size:12px;font-weight:600;
+  background:var(--brass-tint);color:var(--brass);font-size:12px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;transition:background .13s,color .13s}
 @media (hover: hover){
-  .btn:hover:not(:disabled){background:var(--brass);color:var(--ocean-deep)}
+  .btn:hover:not(:disabled){background:var(--brass);color:var(--ink-on-accent)}
 }
 .btn.ghost{border-color:var(--chart-line);color:var(--sand-dim);background:none}
 @media (hover: hover){
@@ -228,7 +298,7 @@ svg.board{width:100%;height:100%;display:block}
 .segmented button{padding:5px 13px;font-size:11px;letter-spacing:.12em;
   text-transform:uppercase;color:var(--sand-dim);border-right:1px solid var(--chart-line)}
 .segmented button:last-child{border-right:none}
-.segmented button.on{background:var(--brass);color:var(--ocean-deep);font-weight:600}
+.segmented button.on{background:var(--brass);color:var(--ink-on-accent);font-weight:600}
 
 /* the odds bar — signature element */
 .odds{margin:13px 0 4px}
@@ -237,20 +307,20 @@ svg.board{width:100%;height:100%;display:block}
   font-size:12px;letter-spacing:.1em;text-transform:uppercase}
 .odds-side b{font-family:var(--font-data);font-size:17px;font-weight:600}
 .odds-bar{height:22px;display:flex;border:1px solid var(--chart-line);
-  background:var(--ocean-deep);overflow:hidden}
+  background:var(--inset);overflow:hidden}
 .odds-bar i{display:block;transition:width .35s cubic-bezier(.4,0,.2,1)}
 .odds-scale{display:flex;justify-content:space-between;margin-top:5px;
   font-family:var(--font-data);font-size:10px;color:var(--sand-dim)}
 .odds-note{font-family:var(--font-map);font-size:10px;letter-spacing:.16em;
   text-transform:uppercase;color:var(--sand-dim);margin:7px 0 0;text-align:center}
 
-.die-face{stroke:#0a141e;stroke-width:1.2}
-.die-face.att{fill:#c9483c}
-.die-face.def{fill:#e6e0d2}
+.die-face{stroke:var(--die-shadow);stroke-width:1.2}
+.die-face.att{fill:var(--die-att)}
+.die-face.def{fill:var(--die-def)}
 .pip{pointer-events:none}
-.pip.att{fill:#f4ece0}
-.pip.def{fill:#1d2a33}
-.die-shadow{fill:#0a141e;opacity:.4}
+.pip.att{fill:var(--die-att-ink)}
+.pip.def{fill:var(--die-def-ink)}
+.die-shadow{fill:var(--die-shadow);opacity:.4}
 .pair-mark{font-family:var(--font-data);font-size:11px;font-weight:600;text-anchor:middle}
 
 .roll-results:empty{display:none}
@@ -262,17 +332,17 @@ svg.board{width:100%;height:100%;display:block}
 .die{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
   font-family:var(--font-data);font-size:15px;font-weight:700;border-radius:5px;
   animation:settle .22s ease}
-.die.att{background:#c9483c;color:#f4ece0;border:1px solid #7e2b23}
-.die.def{background:#e6e0d2;color:#1d2a33;border:1px solid #a49c88}
+.die.att{background:var(--die-att);color:var(--die-att-ink);border:1px solid var(--die-att-edge)}
+.die.def{background:var(--die-def);color:var(--die-def-ink);border:1px solid var(--die-def-edge)}
 .die.lost{opacity:.4}
 .pairs{margin-top:11px;display:flex;flex-direction:column;gap:4px}
 .pair{display:flex;align-items:center;gap:8px;font-family:var(--font-data);font-size:11px}
 .pair .vs{color:var(--sand-dim)}
 .pair .n{width:16px;text-align:center;font-weight:600}
-.pair .n.a{color:#e0685c}
-.pair .n.d{color:#e6e0d2}
+.pair .n.a{color:var(--pair-att)}
+.pair .n.d{color:var(--pair-def)}
 .pair .who{color:var(--sand-dim)}
-.pair.win .who{color:#5fbf8a}
+.pair.win .who{color:var(--win)}
 .pair.lose .who{color:var(--alert)}
 @keyframes settle{from{transform:translateY(-6px) scale(.9);opacity:0}to{transform:none;opacity:1}}
 .casualties{font-family:var(--font-data);font-size:12px;color:var(--sand-dim);margin:9px 0 0}
@@ -285,11 +355,11 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 
 .hand{display:flex;flex-wrap:wrap;gap:6px}
 .card{border:1px solid var(--chart-line);padding:6px 9px;min-width:74px;
-  background:var(--ocean-deep);cursor:pointer;text-align:left}
+  background:var(--inset);cursor:pointer;text-align:left}
 .card .sym{font-family:var(--font-map);font-size:11px;letter-spacing:.13em;
   text-transform:uppercase;color:var(--brass);display:block}
 .card .terr-name{font-size:10px;color:var(--sand-dim);display:block;margin-top:2px}
-.card.picked{border-color:var(--brass);background:#c8a35a1a}
+.card.picked{border-color:var(--brass);background:var(--brass-tint-strong)}
 .card.wild .sym{color:var(--sand)}
 .empty{font-size:12px;color:var(--sand-dim);font-style:italic;margin:0}
 
@@ -299,7 +369,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .log .rnd{font-family:var(--font-data);font-size:10px;color:var(--brass-dim);margin-right:6px}
 
 /* ---------- overlays ---------- */
-.overlay{position:fixed;inset:0;background:#0a141ef2;display:flex;
+.overlay{position:fixed;inset:0;background:var(--scrim);display:flex;
   align-items:center;justify-content:center;padding:22px;z-index:50;overflow-y:auto}
 .overlay[hidden]{display:none}
 .sheet{width:100%;max-width:520px;background:var(--ocean);
@@ -312,7 +382,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .field label{display:block;font-family:var(--font-map);font-size:10px;letter-spacing:.18em;
   text-transform:uppercase;color:var(--sand-dim);margin-bottom:7px}
 .field .hint{text-transform:none;letter-spacing:0;font-family:var(--font-body);font-size:11px}
-.field input,.field select{width:100%;padding:9px 11px;background:var(--ocean-deep);
+.field input,.field select{width:100%;padding:9px 11px;background:var(--inset);
   color:var(--sand);border:1px solid var(--chart-line);font-family:var(--font-body);font-size:14px}
 .opponents{display:flex;flex-direction:column;gap:8px}
 .opponent{display:flex;align-items:center;gap:11px}
@@ -322,7 +392,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .verdict .tag{font-family:var(--font-map);font-size:10px;letter-spacing:.18em;
   text-transform:uppercase;color:var(--sand-dim);border:1px solid var(--chart-line);
   padding:2px 7px}
-.chart{border:1px solid var(--chart-line);background:var(--ocean-deep);
+.chart{border:1px solid var(--chart-line);background:var(--inset);
   padding:12px 12px 6px;margin-bottom:20px}
 .chart h3{font-family:var(--font-map);font-size:10px;letter-spacing:.18em;
   text-transform:uppercase;color:var(--sand-dim);margin:0 0 9px;font-weight:500}
@@ -331,7 +401,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .chart-tabs button{padding:4px 10px;font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--sand-dim);border-right:1px solid var(--chart-line)}
 .chart-tabs button:last-child{border-right:none}
-.chart-tabs button.on{background:var(--brass);color:var(--ocean-deep);font-weight:600}
+.chart-tabs button.on{background:var(--brass);color:var(--ink-on-accent);font-weight:600}
 .chart-note{font-size:11px;color:var(--sand-dim);margin:8px 0 0;line-height:1.45}
 .chart .bar-row{font-family:var(--font-data);font-size:10px;fill:var(--sand-dim)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px}
@@ -364,7 +434,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .final{display:flex;flex-direction:column;gap:7px;margin:22px 0}
 .final-row{display:flex;align-items:center;gap:11px;font-size:13px}
 .final-row .nm{width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.final-row .bar{height:8px;flex:1;background:var(--ocean-deep);border:1px solid var(--chart-line)}
+.final-row .bar{height:8px;flex:1;background:var(--inset);border:1px solid var(--chart-line)}
 .final-row .bar i{display:block;height:100%}
 .final-row .n{font-family:var(--font-data);font-size:11px;color:var(--sand-dim);width:34px;text-align:right}
 
@@ -392,6 +462,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
       <dl><dt>Commander</dt><dd id="r-player">—</dd></dl>
       <dl><dt>Seat</dt><dd id="r-seat">—</dd></dl>
       <div class="speed" id="speed"></div>
+      <button class="btn ghost" id="btn-theme" style="padding:4px 10px;font-size:10px">Board</button>
       <button class="btn ghost" id="btn-save" style="padding:4px 10px;font-size:10px">Save</button>
       <button class="btn ghost" id="btn-concede" style="padding:4px 10px;font-size:10px">Concede</button>
     </div>
@@ -468,6 +539,14 @@ input[type=range]{width:100%;accent-color:var(--brass)}
       <select id="in-order">
         <option value="first" selected>You go first</option>
         <option value="random">Random — anyone may open</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="in-theme">Board style</label>
+      <select id="in-theme">
+        <option value="atlas" selected>Night atlas — dark ocean, muted ground</option>
+        <option value="parchment">Printed board — parchment, classic colours</option>
       </select>
     </div>
 
@@ -893,11 +972,87 @@ const BATTLE_OUTCOMES = computeBattleOutcomes();
  */
 
 
-// Bumped when the shape of a save changes. Version 2 added the richer
-// per-round snapshot (troops, income, continents) and the rivalry matrix; a
-// version 1 save has no way to fill those in, so it is refused with a message
-// rather than loaded into a summary that would silently show empty charts.
+/**
+ * The version this build WRITES. Bumped only for a change that an older reader
+ * could not make sense of.
+ *
+ * Version 2 added the richer per-round snapshot (troops, income, continents)
+ * and the rivalry matrix. A version 1 save has no way to fill those in, so it
+ * is refused rather than loaded into a summary that would silently show empty
+ * charts — but it is refused *deliberately*, by falling off the bottom of the
+ * supported range, not as a side effect of an equality test.
+ */
 const SAVE_VERSION = 2;
+
+/** The oldest version this build can still read, after upgrades. */
+const MIN_SAVE_VERSION = 2;
+
+/**
+ * Upgrades for breaking changes, keyed by the version each one upgrades FROM.
+ *
+ * Deliberately empty right now, and it should usually stay that way: an
+ * *additive* change does not belong here. Reading is tolerant of missing
+ * optional fields (see `fillStats` and the `|| []` defaults below), so adding a
+ * field to the save costs nothing and needs no bump — which is the whole point.
+ * Reach for an entry here only when the meaning of existing data changes.
+ *
+ * An entry takes a save at version N and returns one at N+1:
+ *
+ *   export const SAVE_UPGRADES = {
+ *     2: (data) => ({ ...data, version: 3, missions: null }),
+ *   };
+ */
+const SAVE_UPGRADES = {};
+
+/**
+ * Walk a save up the ladder to `target`.
+ *
+ * Separated out and parameterised so the walk itself is testable while the
+ * ladder is empty — machinery that is first exercised by the change that needs
+ * it is machinery that is wrong when it matters.
+ */
+function migrateSave(data, upgrades = SAVE_UPGRADES, target = SAVE_VERSION) {
+  let out = data;
+  let guard = 0;
+  while (out.version < target) {
+    if (guard++ > 50) throw new Error('That save could not be upgraded — the ladder loops.');
+    const step = upgrades[out.version];
+    if (!step) {
+      throw new Error(
+        `This build cannot upgrade a version ${out.version} save (it reads ${MIN_SAVE_VERSION}–${target}).`
+      );
+    }
+    const next = step(out);
+    if (!next || !(next.version > out.version)) {
+      throw new Error(`The upgrade from version ${out.version} did not advance the save.`);
+    }
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * Every stat field, so a save written before a field existed still loads.
+ *
+ * `state.stats[playerId]` is indexed unconditionally all over the engine — a
+ * missing key is not a degraded summary, it is a crash on the next battle. This
+ * is the mechanism that lets a new stat be added without a version bump.
+ */
+function fillStats(saved) {
+  const s = saved || {};
+  return {
+    battles: s.battles || 0,
+    troopsLost: s.troopsLost || 0,
+    troopsKilled: s.troopsKilled || 0,
+    territoriesCaptured: s.territoriesCaptured || 0,
+    territoriesLost: s.territoriesLost || 0,
+    setsTraded: s.setsTraded || 0,
+    troopsFromCards: s.troopsFromCards || 0,
+    peakTerritories: s.peakTerritories || 0,
+    continentsHeld: s.continentsHeld || 0,
+    capturedFrom: s.capturedFrom || {},
+  };
+}
 
 /** Capture a game as a plain, JSON-safe object. */
 function serializeGame(state) {
@@ -934,14 +1089,36 @@ function serializeGame(state) {
 }
 
 /** Rebuild a game from a saved object. Throws on anything it does not recognise. */
-function deserializeGame(data) {
-  if (!data || typeof data !== 'object') throw new Error('That file is not a saved game.');
-  if (data.version !== SAVE_VERSION) {
-    throw new Error(`Save version ${data.version} does not match this build (${SAVE_VERSION}).`);
+function deserializeGame(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('That file is not a saved game.');
+  if (!Number.isFinite(raw.version)) {
+    throw new Error('That file is not a saved game — it carries no version.');
   }
-  if (!data.players || !data.territories) throw new Error('That save is missing its board.');
+  // A newer build's save cannot be read backwards: this one has no idea what
+  // was added. Say so plainly rather than failing somewhere further in.
+  if (raw.version > SAVE_VERSION) {
+    throw new Error(
+      `That save was written by a newer build (version ${raw.version}; this one reads up to ${SAVE_VERSION}).`
+    );
+  }
+  if (raw.version < MIN_SAVE_VERSION && !SAVE_UPGRADES[raw.version]) {
+    throw new Error(
+      `That save is too old for this build (version ${raw.version}; the oldest it reads is ${MIN_SAVE_VERSION}).`
+    );
+  }
 
-  const rng = createRng(data.rng.seed, data.rng.position);
+  const data = migrateSave(raw);
+  if (!data.players || !data.territories) throw new Error('That save is missing its board.');
+  if (!data.rng || !Number.isFinite(data.rng.seed)) {
+    throw new Error('That save is missing the dice — it cannot be resumed fairly.');
+  }
+  if (!data.turn || !data.setup) throw new Error('That save is missing whose turn it is.');
+
+  // `?? null` matters: createRng treats only null as "no resume point", so an
+  // undefined position would resume the generator at state 0 rather than at the
+  // seed. serializeGame always writes one, but a hand-edited save should not
+  // silently get a different dice stream.
+  const rng = createRng(data.rng.seed, data.rng.position ?? null);
 
   const territories = {};
   for (const id of Object.keys(TERRITORIES)) {
@@ -967,7 +1144,14 @@ function deserializeGame(data) {
     log: data.log || [],
     turn: data.turn,
     setup: data.setup,
-    stats: data.stats,
+    // Filled per player rather than trusted wholesale — see fillStats. Note
+    // `turn` is deliberately NOT normalised the same way: defaulting a missing
+    // `attacksMade` to 0 would re-open placement undo on a turn where dice had
+    // already been rolled, which is exactly the decision that guard exists to
+    // prevent. Absent means "unknown", and unknown must keep blocking.
+    stats: Object.fromEntries(
+      data.players.map((p) => [p.id, fillStats(data.stats && data.stats[p.id])])
+    ),
     history: data.history || [],
     endedBy: data.endedBy || null,
     undoLog: data.undoLog || {},
@@ -1124,6 +1308,8 @@ function createGame({
     dealTerritories(state, rng);
     placeStartingArmies(state, rng, armies);
     for (const p of seated) state.setup.armiesRemaining[p.id] = 0;
+    // Not seat 0 — seat 0 may be the neutral faction, which never takes a turn.
+    state.turn = newTurnRecord(firstPlayingIndex(state));
   }
   return state;
 }
@@ -1274,6 +1460,30 @@ const armiesLeftToPlace = (state, playerId) => state.setup.armiesRemaining[playe
 
 /** True once the draft is done and normal turns have begun. */
 const isSetupComplete = (state) => !state.setup.active;
+
+/**
+ * The first seat at or after `from` that actually takes turns.
+ *
+ * Turn order starts at seat 0, which was the human until the order could be
+ * shuffled and a neutral faction could exist. Seat 0 is now whoever the shuffle
+ * put there — and if that is the neutral, the game opens on a faction that is
+ * never supposed to move. It is not a CPU either, so nothing picked it up: the
+ * interface rendered the human's orders panel and handed the player the neutral
+ * faction's reinforcements.
+ *
+ * Every path that opens a *real* turn goes through this. The claim rotation
+ * deliberately does not — the neutral claims territory in turn like everyone
+ * else; it simply never takes a turn once the game proper begins.
+ */
+function firstPlayingIndex(state, from = 0) {
+  const total = state.players.length;
+  for (let i = 0; i < total; i++) {
+    const index = (from + i) % total;
+    const player = state.players[index];
+    if (!player.eliminated && !player.isNeutral) return index;
+  }
+  return from;
+}
 
 function activePlayers(state) {
   return state.players.filter((p) => !p.eliminated);
@@ -1721,7 +1931,18 @@ function concede(state, playerId) {
   const leader = rivals
     .sort((a, b) => territoryCount(state, b.id) - territoryCount(state, a.id))[0];
 
-  for (const t of territoriesOf(state, playerId)) t.ownerId = leader.id;
+  // The transfer is a change of ownership like any other, and the summary reads
+  // the stats rather than the board: without this the winner of a conceded game
+  // shows far fewer territories captured than they finish holding, and the
+  // rivalry view never sees the handover at all.
+  const surrendered = territoriesOf(state, playerId);
+  for (const t of surrendered) t.ownerId = leader.id;
+  if (surrendered.length) {
+    state.stats[leader.id].territoriesCaptured += surrendered.length;
+    state.stats[playerId].territoriesLost += surrendered.length;
+    const takenFrom = state.stats[leader.id].capturedFrom;
+    takenFrom[playerId] = (takenFrom[playerId] || 0) + surrendered.length;
+  }
   player.eliminated = true;
   if (player.cards.length) {
     leader.cards.push(...player.cards);
@@ -1903,7 +2124,9 @@ function deployRemainingCpus(state, planner) {
 function finishSetup(state) {
   state.setup.active = false;
   for (const p of state.players) clearUndoLog(state, p.id);
-  state.turn = newTurnRecord(0);
+  // The neutral faction claims in the rotation but never takes a turn, so the
+  // first real turn goes to the first seat that does — which is not always 0.
+  state.turn = newTurnRecord(firstPlayingIndex(state));
   log(state, 'Setup complete — the campaign begins');
   return beginTurn(state);
 }
@@ -2290,8 +2513,18 @@ function findNearlyDeadPlayer(state, player) {
     .sort((a, b) => territoryCount(state, a.id) - territoryCount(state, b.id))[0] ?? null;
 }
 
-/** Decide how many troops to push into a captured territory. */
-function resolveOccupation(state, player) {
+/**
+ * Decide how many troops to push into a captured territory.
+ *
+ * Exported because it is also the repair for a game resumed mid-capture. A save
+ * can be taken while a CPU sits in the occupy phase, and nothing in stepTurn
+ * will settle it — the generator opens a fresh turn, every action refuses
+ * because the phase is wrong, and endTurn refuses too. The UI settles the
+ * outstanding capture on load by calling this, rather than re-deriving the
+ * decision itself: a rule the CPU owns stays in one place.
+ */
+function resolveOccupation(state, player = currentPlayer(state)) {
+  if (state.turn.phase !== PHASES.OCCUPY || !state.turn.pendingOccupy) return null;
   const { fromId, toId, minTroops, maxTroops } = state.turn.pendingOccupy;
   const to = state.territories[toId];
   const threat = to.adjacentIds
@@ -2470,26 +2703,26 @@ const LAYOUT = {
   westernEurope:  { x: 370, y: 215 },
 
   // Africa
-  northAfrica: { x: 395, y: 300 },
-  egypt:       { x: 475, y: 290 },
-  eastAfrica:  { x: 520, y: 360 },
-  congo:       { x: 450, y: 390 },
-  southAfrica: { x: 460, y: 465 },
+  northAfrica: { x: 408, y: 308 },
+  egypt:       { x: 479, y: 285 },
+  eastAfrica:  { x: 513, y: 361 },
+  congo:       { x: 423, y: 392 },
+  southAfrica: { x: 447, y: 458 },
   madagascar:  { x: 545, y: 450 },
 
   // Asia
-  middleEast:  { x: 578, y: 268 },
-  afghanistan: { x: 620, y: 190 },
-  ural:        { x: 620, y: 110 },
-  siberia:     { x: 690, y: 90 },
-  yakutsk:     { x: 770, y: 70 },
-  kamchatka:   { x: 870, y: 90 },
-  irkutsk:     { x: 760, y: 140 },
-  mongolia:    { x: 770, y: 200 },
+  middleEast:  { x: 600, y: 246 },
+  afghanistan: { x: 611, y: 207 },
+  ural:        { x: 617, y: 132 },
+  siberia:     { x: 686, y: 92 },
+  yakutsk:     { x: 781, y: 76 },
+  kamchatka:   { x: 863, y: 90 },
+  irkutsk:     { x: 762, y: 119 },
+  mongolia:    { x: 776, y: 172 },
   japan:       { x: 880, y: 190 },
-  china:       { x: 750, y: 255 },
-  india:       { x: 675, y: 300 },
-  siam:        { x: 770, y: 320 },
+  china:       { x: 744, y: 227 },
+  india:       { x: 687, y: 282 },
+  siam:        { x: 765, y: 327 },
 
   // Australia
   indonesia:        { x: 775, y: 395 },
@@ -2557,9 +2790,426 @@ const PLATE_Y = -FRAME_MARGIN;
 const PLATE_WIDTH = BOARD_WIDTH + FRAME_MARGIN * 2;
 const PLATE_HEIGHT = BOARD_HEIGHT + FRAME_MARGIN + FRAME_MARGIN_BOTTOM;
 
+/* ===== src/ui/theme.js ===== */
+/**
+ * Board themes — every colour in the game, in one table.
+ *
+ * Colour used to live in three places that had to be edited together: the
+ * `:root` custom properties in the template, the palettes in geography.js, and
+ * a scatter of literals inside drawBoard. Nothing was switchable, and changing
+ * the look meant hunting all three.
+ *
+ * A theme has two halves, because the board is drawn two ways:
+ *
+ *   `vars`  — CSS custom properties, written onto the root element. Everything
+ *             the stylesheet paints goes here, including the SVG classes.
+ *   the rest — values the drawing code reads directly, for things that are not
+ *             expressible as a CSS property: the ocean depth bands (a list of
+ *             width/colour pairs), the vignette stops, and the hue arithmetic
+ *             that turns a continent plus a terrain into a territory fill.
+ *
+ * ## Adding a theme
+ *
+ * Copy `atlas`, change the values, add it to `THEMES`. Nothing else needs to
+ * know: `applyTheme(id)` writes the properties and the caller redraws. The one
+ * rule is that a theme must define *every* key — `assertComplete` (exercised by
+ * the suite) fails a theme that is missing one, because a missing custom
+ * property does not fall back to another theme's value, it falls back to
+ * whatever the `:root` block happens to say, which is silent and wrong.
+ *
+ * ## Why `:root` still carries the atlas values
+ *
+ * As a fallback if the script has not run yet — the setup sheet is painted
+ * before any game exists. The duplication is deliberate and it is guarded: a
+ * test parses the `:root` block out of the template and requires it to match
+ * `THEMES.atlas.vars` exactly, so the two cannot drift.
+ *
+ * ## What is deliberately NOT here
+ *
+ * Player colours. They live on the player record in the engine and are written
+ * into save files, so a theme cannot own them without changing what a saved
+ * game means. `colorOf()` in the UI is the single place a theme could remap
+ * them for display, if a lighter board ever needs it.
+ */
+
+/** The night-atlas board: dark ocean, desaturated ground, brass furniture. */
+const ATLAS = {
+  id: 'atlas',
+  name: 'Night atlas',
+
+  vars: {
+    // --- shell ---
+    '--ocean': '#0e1b29',
+    '--ocean-deep': '#0a141e',
+    '--land': '#1b2f42',
+    '--chart-line': '#2b4257',
+    '--chart-line-soft': '#1e3243',
+    '--sand': '#e8dcc4',
+    '--sand-dim': '#93a3b1',
+    '--brass': '#c8a35a',
+    '--brass-dim': '#8a7038',
+    '--alert': '#e05a47',
+
+    // --- the map ---
+    '--coast': '#5a7d99',
+    '--region-edge': '#0b1620',
+    '--terrain-ink': '#0e1b29',
+    '--sea-label': '#456478',
+    '--link': '#8fb0c9',
+    '--sea-route': '#7ea3bd',
+    '--port': '#7ea3bd',
+    '--cartouche-fill': '#0e1b2999',
+    '--card-symbol': '#e8dcc4',
+    '--symbol-halo': '#0e1b29',
+    '--label-ink': '#dbe6ee',
+    '--label-ink-water': '#b9cddc',
+    '--label-halo': '#0a141e',
+    '--unclaimed': '#8d9aa6',
+    '--no-owner': '#33465a',
+
+    // --- panel and overlays ---
+    '--tip-fill': '#0a141ef2',
+    '--scrim': '#0a141ef2',
+    '--brass-tint': '#c8a35a12',
+    '--brass-tint-strong': '#c8a35a1a',
+
+    // --- dice ---
+    '--die-att': '#c9483c',
+    '--die-att-ink': '#f4ece0',
+    '--die-att-edge': '#7e2b23',
+    '--die-def': '#e6e0d2',
+    '--die-def-ink': '#1d2a33',
+    '--die-def-edge': '#a49c88',
+    '--die-shadow': '#0a141e',
+    '--pair-att': '#e0685c',
+    '--pair-def': '#e6e0d2',
+    '--win': '#5fbf8a',
+    '--grain-opacity': '.07',
+
+    // --- three jobs --ocean-deep used to do at once. Identical in a dark theme,
+    //     which is why the overload went unnoticed; they diverge in a light one.
+    '--sea': '#0e1b29',             // open water; the plate also carries the band
+    // How far a marker fades when you cannot act on it. A light board needs a
+    // gentler fade: the markers are the darkest thing on it rather than the
+    // brightest, so the same opacity washes them out instead of quieting them.
+    '--dim-opacity': '.45',
+    '--ink-on-accent': '#0a141e',   // text printed ON a brass fill
+    '--inset': '#0a141e',           // recessed panel surfaces
+    '--marker-edge': '#0a141e',     // the ring drawn around a player's colour
+    '--marker-shadow': '0 1px 2px rgba(6,14,22,.75)',
+    // The surface the board lies on. `lit` is the centre of a soft pool of
+    // light under the plate; `table` is the corners it falls away to.
+    '--table': '#0a141e',
+    '--table-lit': '#101f2e',
+
+    // --- not colours, but they are part of the look ---
+    '--region-edge-dash': '3.5 3',
+    '--region-edge-opacity': '.5',
+    '--label-halo-opacity': '.72',
+  },
+
+  /** Browser chrome colour, for the iOS home-screen build. */
+  themeColor: '#0e1b29',
+
+  /**
+   * Ink chosen against a player's colour, so a troop numeral stays legible on
+   * whichever swatch sits under it. Picked by luminance in `inkOn`.
+   */
+  ink: { dark: '#0a141e', light: '#f2ece0' },
+
+  /** Ocean depth bands, drawn outward from each coast. [strokeWidth, colour] */
+  oceanBands: [
+    [26, '#12222f'],
+    [16, '#152735'],
+    [8, '#192c3c'],
+  ],
+
+  /** Corner darkening over the finished plate. */
+  vignette: { color: '#000', innerOpacity: '0', outerOpacity: '0.3' },
+
+  /**
+   * How domed a marker looks: a highlight off-centre to the top left, falling
+   * away to a shaded rim. Restrained on a dark board — the markers are already
+   * the brightest thing on it and a strong highlight turns them into buttons.
+   */
+  chip: { highlight: '0.26', shade: '0.30' },
+
+  /**
+   * One hue per continent, the way a printed Risk board does it.
+   *
+   * Continent colour is the information the game is played on — whether you are
+   * close to a bonus, whose sphere you are pushing into — so it belongs in the
+   * loudest channel the map has. Terrain survives as a shade *within* the family
+   * rather than as its own palette.
+   *
+   * Kept dark and heavily desaturated on purpose. The saturated version of these
+   * hues is what the player markers use, and if the ground competes with them
+   * the board stops answering "who owns this" at a glance.
+   */
+  continentHues: {
+    northAmerica: { h: 44, s: 22, l: 27 },   // gold
+    southAmerica: { h: 8, s: 25, l: 27 },    // brick
+    europe: { h: 211, s: 21, l: 27 },        // blue
+    africa: { h: 28, s: 27, l: 28 },         // ochre
+    asia: { h: 132, s: 18, l: 25 },          // green
+    australia: { h: 286, s: 18, l: 27 },     // plum
+  },
+
+  /**
+   * How each terrain shifts its continent's hue: lightness, saturation, and a
+   * small hue nudge. Deserts run lighter and warmer, jungle darker and greener,
+   * ice paler and cooler — recognisable as terrain without leaving the family.
+   */
+  terrainShift: {
+    ice: { dl: 11, ds: -11, dh: 10 },
+    mountain: { dl: 4, ds: -8, dh: -2 },
+    forest: { dl: -4, ds: 4, dh: 14 },
+    jungle: { dl: -7, ds: 8, dh: 18 },
+    desert: { dl: 8, ds: 9, dh: -7 },
+    plains: { dl: 1, ds: 1, dh: 4 },
+  },
+
+  /**
+   * Ceilings on the computed fill. These matter more than the values above: the
+   * player markers live around 55-60% lightness at high saturation, and ground
+   * that climbs into that range starts competing with them — a green marker on
+   * green Asia is the first thing to become hard to read.
+   */
+  fillLimits: { s: [8, 42], l: [14, 40] },
+
+  /**
+   * Whether to draw a line between the centres of two land-adjacent territories.
+   *
+   * Off. The regions agree with the adjacency graph exactly now, so a shared
+   * border already says it — and validate-geography fails the build if that ever
+   * stops being true. Kept as a switch because the two boards could reasonably
+   * disagree: the lines read as supply routes on a chart and as clutter on a
+   * printed map.
+   */
+  landLinks: false,
+
+  /** Unowned territory ground, before anyone has claimed it. */
+  neutralFill: '#3d4a55',
+
+  /**
+   * Display-only remap of the player swatches, keyed by the engine's value.
+   * Empty here: the engine's colours were chosen against this board. See the
+   * parchment theme for why a lighter one needs it.
+   */
+  playerInk: {},
+};
+
+
+/**
+ * The printed board: parchment plate, saturated continent blocks, dark ink.
+ *
+ * A Risk board is the opposite of an atlas. It is flat, high-contrast and
+ * unambiguous, because its job is to let you count territory from across a
+ * table. So the moves against `atlas` are all in the same direction: the ground
+ * gets lighter and much more saturated, the borders go hard and dark, and the
+ * lettering becomes ink on paper with no halo holding it up.
+ *
+ * The one thing that has to be re-earned is the ownership read. On the dark
+ * board the markers were the brightest thing by a distance; on a light one they
+ * are the *darkest*, so the ceilings in `fillLimits` push the ground UP into a
+ * light band rather than down into a dark one, and `markerEdge` is ink rather
+ * than shadow. `playerInk` darkens the engine's swatches for display — the
+ * engine's own values are written into save files and must not change.
+ */
+const PARCHMENT = {
+  id: 'parchment',
+  name: 'Printed board',
+
+  vars: {
+    // --- shell: paper, with printed ink on it ---
+    '--ocean': '#e5d7b6',
+    '--ocean-deep': '#7c6a4d',
+    '--land': '#d6c39c',
+    '--chart-line': '#a89372',
+    '--chart-line-soft': '#c3b18d',
+    '--sand': '#2e2519',
+    '--sand-dim': '#6b5c45',
+    '--brass': '#8a5a2b',
+    '--brass-dim': '#b08a5c',
+    '--alert': '#a32b1c',
+
+    // --- the map ---
+    '--coast': '#4b3a24',
+    '--region-edge': '#3d3021',
+    '--terrain-ink': '#5b4a30',
+    '--sea-label': '#6f8a95',
+    '--link': '#6d5a3d',
+    '--sea-route': '#5c4a30',
+    '--port': '#4b3a24',
+    '--cartouche-fill': '#f2e7ccdd',
+    '--card-symbol': '#3f3322',
+    '--symbol-halo': '#efe3c4',
+    '--label-ink': '#2b2216',
+    '--label-ink-water': '#6a5a41',
+    '--label-halo': '#efe3c4',
+    '--unclaimed': '#b9ab8d',
+    '--no-owner': '#a2937a',
+
+    // --- panel and overlays ---
+    '--tip-fill': '#f4ead2f7',
+    '--scrim': '#3a2f1eeb',
+    '--brass-tint': '#8a5a2b18',
+    '--brass-tint-strong': '#8a5a2b26',
+
+    // --- dice: the printed convention, red attacker and bone defender ---
+    '--die-att': '#b03a2c',
+    '--die-att-ink': '#f7efe0',
+    '--die-att-edge': '#6d2118',
+    '--die-def': '#f6efdc',
+    '--die-def-ink': '#2e2519',
+    '--die-def-edge': '#a08c68',
+    '--die-shadow': '#5b4a30',
+    '--pair-att': '#a8321f',
+    '--pair-def': '#5b4a30',
+    '--win': '#2f7a4a',
+    '--grain-opacity': '.13',
+
+    // Paper plate, blue water. The two were one colour in the first pass and the
+    // continents had no sea to sit in — the whole chart read as one sheet of tan.
+    '--sea': '#cddde2',
+    '--dim-opacity': '.66',
+    '--ink-on-accent': '#f7efe0',
+    '--inset': '#d8c9a4',
+    '--marker-edge': '#2b2216',
+    '--marker-shadow': '0 1px 2px rgba(60,44,20,.45)',
+    '--table': '#5f4f38',
+    '--table-lit': '#7a6647',
+
+    // Political borders go solid and firm. A dashed rule reads as tentative on
+    // paper, and a printed board reserves dashes for sea lanes.
+    '--region-edge-dash': 'none',
+    '--region-edge-opacity': '.62',
+    // No halo: it exists to hold light letters over dark terrain, and on paper
+    // it reads as a glow around the type.
+    '--label-halo-opacity': '0',
+  },
+
+  themeColor: '#e5d7b6',
+
+  ink: { dark: '#2b2216', light: '#f7efe0' },
+
+  /**
+   * Not depth bands but a coastal shadow: three warm tones stepping out from the
+   * shore, the way a printed map shades its coastline. The glowing blue bands of
+   * the atlas theme are the single most "screen" thing on that board.
+   */
+  oceanBands: [
+    [26, '#bccfd6'],
+    [16, '#aec4cd'],
+    [8, '#9eb8c3'],
+  ],
+
+  /** Warm and light — paper darkens at the edges, it does not go black. */
+  vignette: { color: '#6b5836', innerOpacity: '0', outerOpacity: '0.22' },
+
+  /** Stronger than the atlas board: a printed counter catches more light. */
+  chip: { highlight: '0.34', shade: '0.34' },
+
+  /**
+   * The classic continent families, at printed-board saturation.
+   *
+   * On the dark board these had to stay under the markers. Here the markers are
+   * the darkest thing rather than the brightest, so the ground is free to carry
+   * real colour — which is the whole point of a Risk board: continent colour is
+   * the information the game is played on.
+   */
+  continentHues: {
+    northAmerica: { h: 44, s: 58, l: 66 },   // gold
+    southAmerica: { h: 6, s: 52, l: 68 },    // brick
+    europe: { h: 205, s: 42, l: 66 },        // blue
+    africa: { h: 26, s: 55, l: 64 },         // ochre
+    asia: { h: 116, s: 34, l: 62 },          // green
+    australia: { h: 290, s: 30, l: 68 },     // plum
+  },
+
+  /** Terrain still varies the shade, but gently — blocks of colour read better. */
+  terrainShift: {
+    ice: { dl: 8, ds: -14, dh: 8 },
+    mountain: { dl: 2, ds: -9, dh: -3 },
+    forest: { dl: -6, ds: 5, dh: 12 },
+    jungle: { dl: -9, ds: 9, dh: 16 },
+    desert: { dl: 6, ds: 10, dh: -6 },
+    plains: { dl: 1, ds: 0, dh: 3 },
+  },
+
+  /** Floors rather than ceilings: ground must stay well above the markers. */
+  fillLimits: { s: [22, 68], l: [52, 78] },
+
+  landLinks: false,
+  neutralFill: '#cdbc98',
+
+  /**
+   * Display-only darkening of the player swatches.
+   *
+   * The engine's colours were picked against a navy ocean and several of them —
+   * the gold especially — disappear on parchment. These are the same hues taken
+   * down in lightness so they read as printed pieces on paper. Keyed by the
+   * engine value, so a save written under either theme is unaffected: the engine
+   * never sees this.
+   */
+  playerInk: {
+    '#d4453a': '#a8281d',
+    '#3d8fd6': '#1c5f9e',
+    '#3fa87a': '#1f7550',
+    '#9b5fc0': '#6b3391',
+    '#e0a53c': '#a9741a',
+    '#2fa39b': '#14706a',
+    '#7c8894': '#6a7480',
+  },
+};
+
+const THEMES = { atlas: ATLAS, parchment: PARCHMENT };
+
+const DEFAULT_THEME = 'atlas';
+
+/** Every key a theme must define. Derived from atlas, so it cannot fall behind. */
+const THEME_VAR_NAMES = Object.keys(ATLAS.vars);
+const THEME_KEYS = Object.keys(ATLAS);
+
+/**
+ * Check a theme defines everything.
+ *
+ * A missing custom property does not inherit another theme's value — it falls
+ * back to whatever `:root` says, which means a half-finished theme looks *almost*
+ * right and the one wrong colour gets blamed on something else. Fail loudly.
+ *
+ * @returns {string[]} what is missing; empty means complete
+ */
+function assertComplete(theme) {
+  const missing = [];
+  if (!theme || typeof theme !== 'object') return ['theme is not an object'];
+  for (const key of THEME_KEYS) {
+    if (theme[key] === undefined) missing.push(`missing "${key}"`);
+  }
+  for (const name of THEME_VAR_NAMES) {
+    if (!theme.vars || theme.vars[name] === undefined) missing.push(`missing var ${name}`);
+  }
+  for (const cId of Object.keys(ATLAS.continentHues)) {
+    if (!theme.continentHues || !theme.continentHues[cId]) {
+      missing.push(`missing continent hue "${cId}"`);
+    }
+  }
+  for (const kind of Object.keys(ATLAS.terrainShift)) {
+    if (!theme.terrainShift || !theme.terrainShift[kind]) {
+      missing.push(`missing terrain shift "${kind}"`);
+    }
+  }
+  return missing;
+}
+
+const getTheme = (id) => THEMES[id] || THEMES[DEFAULT_THEME];
+
 /* ===== src/ui/geography.js ===== */
 /**
  * Map geography — coastlines, terrain, and atlas furniture.
+ *
+ * Shapes and placement only. Every colour this file used to carry now lives in
+ * theme.js; what stays here is the arithmetic that turns a palette into a fill.
  *
  * The board previously drew each continent as a convex hull of its territory
  * nodes, which reads as a blob rather than a landmass. These are hand-authored
@@ -2814,30 +3464,6 @@ function seededOffsets(key, count) {
 }
 
 /**
- * Biome fills, keyed by the terrain types above.
- *
- * Tuned for a dark ocean and, more importantly, to sit BELOW the player colours
- * in the visual hierarchy: these are dark and only moderately saturated, so a
- * bright red or teal troop marker still reads as the loudest thing on the board.
- * Raising the saturation here is the fastest way to make ownership hard to scan.
- */
-const BIOME_COLORS = {
-  ice:      '#4d6274',
-  mountain: '#5c5449',
-  forest:   '#33503c',
-  jungle:   '#2d553a',
-  desert:   '#6d5c3c',
-  plains:   '#4e5638',
-};
-
-/** Ocean depth bands, drawn outward from each coast. [strokeWidth, colour] */
-const OCEAN_BANDS = [
-  [26, '#12222f'],
-  [16, '#152735'],
-  [8,  '#192c3c'],
-];
-
-/**
  * Territory regions.
  *
  * The map only ever had nodes, so there was nothing to fill. A cell is built by
@@ -2846,6 +3472,14 @@ const OCEAN_BANDS = [
  * by successive half-plane clipping. Clipping the result to the coastline is
  * left to the renderer, which does it with an SVG clipPath rather than polygon
  * intersection maths.
+ *
+ * These cells ARE the adjacency now. That was not true for most of this board's
+ * life — eight pairs out of eighty-three disagreed with the graph, which is why
+ * the board used to draw a line between every pair of adjacent territory
+ * centres. The coordinates in layout.js were then hill-climbed until the
+ * disagreement was zero, so the lines came off and a shared border is the only
+ * thing saying two territories connect. `validate-geography.js` FAILS on any
+ * mismatch: move a node or redraw a coastline and it will tell you.
  */
 function voronoiCell(node, others, bounds) {
   let poly = [
@@ -3174,55 +3808,24 @@ function pointInPoly(x, y, poly) {
 // Continent colour families
 // ---------------------------------------------------------------------------
 
-/**
- * One hue per continent, the way a printed Risk board does it.
- *
- * Continent colour is the information the game is actually played on — whether
- * you are close to a bonus, whose sphere you are pushing into — so it belongs in
- * the loudest channel the map has. Terrain then survives as a shade *within* the
- * family rather than as its own palette.
- *
- * Kept dark and heavily desaturated on purpose. The saturated version of these
- * hues is what the player markers use, and if the ground competes with them the
- * board stops answering "who owns this" at a glance.
- */
-const CONTINENT_HUES = {
-  northAmerica: { h: 44,  s: 22, l: 27 },   // gold
-  southAmerica: { h: 8,   s: 25, l: 27 },   // brick
-  europe:       { h: 211, s: 21, l: 27 },   // blue
-  africa:       { h: 28,  s: 27, l: 28 },   // ochre
-  asia:         { h: 132, s: 18, l: 25 },   // green
-  australia:    { h: 286, s: 18, l: 27 },   // plum
-};
-
-/**
- * How each terrain shifts its continent's hue: lightness, saturation, and a
- * small hue nudge. Deserts run lighter and warmer, jungle darker and greener,
- * ice paler and cooler — recognisable as terrain without leaving the family.
- */
-const TERRAIN_SHIFT = {
-  ice:      { dl: 11, ds: -11, dh: 10 },
-  mountain: { dl: 4,  ds: -8,  dh: -2 },
-  forest:   { dl: -4, ds: 4,   dh: 14 },
-  jungle:   { dl: -7, ds: 8,   dh: 18 },
-  desert:   { dl: 8,  ds: 9,   dh: -7 },
-  plains:   { dl: 1,  ds: 1,   dh: 4 },
-};
-
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
-/** The fill for one territory: its continent's hue, shaded by its terrain. */
-function territoryFill(continentId, terrain) {
-  const base = CONTINENT_HUES[continentId];
-  if (!base) return '#3d4a55';
-  const shift = TERRAIN_SHIFT[terrain] || TERRAIN_SHIFT.plains;
+/**
+ * The fill for one territory: its continent's hue, shaded by its terrain.
+ *
+ * The palette itself lives in theme.js — this is only the arithmetic that turns
+ * a continent plus a terrain into a colour, which is the same for every theme.
+ * The clamps are the part that matters: ground that climbs into the markers'
+ * lightness range stops the board answering "who owns this" at a glance, so the
+ * ceilings come from the theme rather than from taste applied per-territory.
+ */
+function territoryFill(continentId, terrain, theme = THEMES.atlas) {
+  const base = theme.continentHues[continentId];
+  if (!base) return theme.neutralFill;
+  const shift = theme.terrainShift[terrain] || theme.terrainShift.plains;
   const h = (base.h + shift.dh + 360) % 360;
-  // Ceilings matter more than the values. The player markers live around 55-60%
-  // lightness at high saturation; ground that climbs into that range starts
-  // competing with them, and a green marker on green Asia is the first thing to
-  // become hard to read.
-  const s = clamp(base.s + shift.ds, 8, 42);
-  const l = clamp(base.l + shift.dl, 14, 40);
+  const s = clamp(base.s + shift.ds, theme.fillLimits.s[0], theme.fillLimits.s[1]);
+  const l = clamp(base.l + shift.dl, theme.fillLimits.l[0], theme.fillLimits.l[1]);
   return `hsl(${h} ${s}% ${l}%)`;
 }
 
@@ -3252,6 +3855,49 @@ const SPEEDS = {
 };
 let speed = 'normal';
 const pace = () => SPEEDS[speed];
+
+// ---------------------------------------------------------------- theme ---
+
+/**
+ * The board's palette, applied as custom properties on the root element.
+ *
+ * Two halves, because the board is painted two ways: the stylesheet reads the
+ * custom properties, and drawBoard reads `theme()` directly for the handful of
+ * values that are not CSS properties — the ocean depth bands, the vignette
+ * stops, and the hue arithmetic behind each territory fill.
+ *
+ * The `:root` block carries the atlas values too, as the fallback for anything
+ * painted before this runs. That duplication is checked by the suite rather
+ * than trusted.
+ */
+let themeId = DEFAULT_THEME;
+const theme = () => getTheme(themeId);
+
+function applyTheme(id) {
+  const next = getTheme(id);
+  // A missing custom property does not inherit another theme's value — it falls
+  // back to whatever :root says, so a half-finished theme looks *almost* right
+  // and the one wrong colour gets blamed on something else. Fail loudly.
+  const missing = assertComplete(next);
+  if (missing.length) {
+    throw new Error('Theme "' + next.id + '" is incomplete — ' + missing.join('; '));
+  }
+  themeId = next.id;
+  const root = document.documentElement;
+  for (const name in next.vars) root.style.setProperty(name, next.vars[name]);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', next.themeColor);
+  return next;
+}
+
+/** Switch themes and repaint. The board is redrawn because its SVG attributes
+ *  carry theme values that no stylesheet rule can reach. */
+function setTheme(id) {
+  applyTheme(id);
+  if (state) { drawBoard(); render(); }
+}
+
+applyTheme(DEFAULT_THEME);
 const HUMAN_BATTLE_SCALE = 0.5;      // your own attacks resolve at half the base pace
 
 /**
@@ -3340,6 +3986,10 @@ function syncNeutralField() {
   $('in-neutral').disabled = !solo;
 }
 $('in-count').addEventListener('change', () => { buildOpponentPickers(); syncNeutralField(); });
+// Applied on change rather than on start: picking a board style and having
+// nothing happen until you commit to a game is a poor way to choose one. The
+// setup sheet is itself themed, so it previews the choice.
+$('in-theme').addEventListener('change', () => setTheme($('in-theme').value));
 buildOpponentPickers();
 syncNeutralField();
 
@@ -3349,6 +3999,7 @@ $('btn-start').addEventListener('click', () => {
   const drafting = $('in-start').value === 'draft';
   newGameId();
   busy = false;
+  applyTheme($('in-theme').value);
   state = createGame({
     humanName: $('in-name').value.trim() || 'You',
     cpuDifficulties: difficulties,
@@ -3369,9 +4020,19 @@ $('btn-start').addEventListener('click', () => {
   kickOff();
 });
 
-/** Download the game as a file the player keeps. */
+/**
+ * Download the game as a file the player keeps.
+ *
+ * Refused while `busy`. A save taken mid-animation captures a turn nobody is
+ * holding: the CPU's generator is suspended between yields, and that position
+ * does not survive being written to disk. The worst case was a save taken while
+ * a CPU sat in the occupy phase, which resumed into a board no move could
+ * advance — see `settlePendingOccupy` for the repair that covers saves already
+ * written. This is the half that stops new ones being made.
+ */
 function doSave() {
   if (!state) return;
+  if (busy) return flash('Wait for the move to finish before saving.');
   try {
     const blob = new Blob([JSON.stringify(serializeGame(state), null, 1)],
       { type: 'application/json' });
@@ -3442,8 +4103,38 @@ function kickOff() {
     if (isAutoSeat(currentPlayer(state))) runSetup();
     return;
   }
+  if (settlePendingOccupy()) render();
   if (state.turn.phase === PHASES.GAME_OVER) { showResult(); return; }
   if (currentPlayer(state).isCPU) runCpuTurns();
+}
+
+/**
+ * Finish a capture that a save was taken in the middle of.
+ *
+ * Saving is now refused while a move is running, but files written before that
+ * still exist, and a save taken during a CPU's occupy phase is unplayable
+ * without this: `stepTurn` opens a fresh turn, every action refuses because the
+ * phase is `occupy`, `endTurn` refuses with "resolve the captured territory
+ * first", and the generator returns having done nothing — so runCpuTurns spins
+ * its guard and leaves the board frozen with no legal move for anyone.
+ *
+ * The human's own pending capture is left alone: they get the occupy panel and
+ * decide for themselves. Only a seat that cannot be asked is settled here, and
+ * it is settled by the CPU's own planner rather than by a number picked here —
+ * the UI re-implements no rules.
+ *
+ * @returns {boolean} whether anything was settled
+ */
+function settlePendingOccupy() {
+  if (state.turn.phase !== PHASES.OCCUPY || !state.turn.pendingOccupy) return false;
+  if (!currentPlayer(state).isCPU) return false;
+  const moved = resolveOccupation(state);
+  if (!moved) return false;
+  // flash() writes textContent, so the names go in raw — escaping here would
+  // print the entities themselves.
+  flash('Resumed mid-capture \u2014 ' + currentPlayer(state).name +
+    ' finished taking ' + state.territories[moved.toId].name + '.');
+  return true;
 }
 
 function renderSpeed() {
@@ -3461,6 +4152,21 @@ $('btn-again').addEventListener('click', () => {
   $('setup').hidden = false;
 });
 
+/**
+ * Flip between board styles mid-game.
+ *
+ * Deliberately a plain cycle rather than a menu: there are two, and the point of
+ * putting it in the top bar is being able to compare them on the same board
+ * without starting again.
+ */
+function cycleTheme() {
+  const ids = Object.keys(THEMES);
+  const next = ids[(ids.indexOf(themeId) + 1) % ids.length];
+  setTheme(next);
+  if ($('in-theme')) $('in-theme').value = next;
+  flash('Board style: ' + THEMES[next].name);
+}
+$('btn-theme').addEventListener('click', cycleTheme);
 $('btn-save').addEventListener('click', doSave);
 $('btn-save-final').addEventListener('click', doSave);
 $('btn-concede').addEventListener('click', doConcede);
@@ -3503,17 +4209,35 @@ function pointInPolygon(pt, poly) {
  * Cartouche geometry for a given type size — a ruled plaque holding the continent
  * name and its bonus, with a divider between them.
  */
+/**
+ * A continent plaque: name on a ruled banner, bonus in a struck badge.
+ *
+ * The bonus used to sit in a second text cell behind a vertical rule, which
+ * reads as a table cell. A printed board strikes the reward like a coin, and it
+ * is worth more than the name — you read the plaque to be reminded what holding
+ * the place pays. So the badge is round, sized off the plaque's height rather
+ * than the digits in it, which also keeps every continent's badge identical
+ * whether it says +2 or +7.
+ */
 function cartoucheBox(name, bonus, size) {
   const track = size * 0.19;                       // letter-spacing
   const nameW = name.length * (size * 0.56 + track);
-  const bonusW = String(bonus).length * size * 0.72 + 12;
-  const padding = size * 1.1;
+  // Sized to sit inside the footprint the old divided-cell plaque had. Growing
+  // it is not free: the placement search has to fit six of these into whatever
+  // open water is left, and a slightly larger box pushed three of them into a
+  // heap in the Atlantic.
+  const h = size * 2.1;
+  // Clear of the inner rule, which sits 3px in — at 0.35 the badge touched it.
+  const badgeR = h * 0.29;
+  const bonusW = badgeR * 2 + size * 0.35;
+  const padding = size * 1.0;
   return {
     size,
     nameW: nameW,
     bonusW: bonusW,
+    badgeR: badgeR,
     w: nameW + bonusW + padding * 2,
-    h: size * 2.1,
+    h: h,
     track: track,
   };
 }
@@ -3807,6 +4531,13 @@ function drawBoard() {
     class: 'plate-bg', x: PLATE_X, y: PLATE_Y, width: PLATE_WIDTH, height: PLATE_HEIGHT,
   }));
 
+  // The sea, over the plate but under everything else. Separate from the plate
+  // so a theme can print the chart on paper and still have blue water — the
+  // plate carries the frame margin and the title band, which are not sea.
+  svg.appendChild(make('rect', {
+    class: 'sea', x: 0, y: 0, width: BOARD_WIDTH, height: BOARD_HEIGHT,
+  }));
+
   const grid = make('g', { class: 'graticule' });
   for (let x = 80; x < BOARD_WIDTH; x += 80) grid.appendChild(make('line', { x1: x, y1: 0, x2: x, y2: BOARD_HEIGHT }));
   for (let y = 60; y < BOARD_HEIGHT; y += 60) grid.appendChild(make('line', { x1: 0, y1: y, x2: BOARD_WIDTH, y2: y }));
@@ -3824,6 +4555,16 @@ function drawBoard() {
   blend.appendChild(make('feGaussianBlur', { stdDeviation: '7', edgeMode: 'duplicate' }));
   defs.appendChild(blend);
 
+  // One gradient shared by all 42 markers: a highlight off-centre to the top
+  // left, falling away to a shaded rim.
+  const chip = theme().chip;
+  const dome = make('radialGradient', { id: 'chip-dome', cx: '50%', cy: '50%', r: '58%', fx: '34%', fy: '28%' });
+  dome.appendChild(make('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': chip.highlight }));
+  dome.appendChild(make('stop', { offset: '52%', 'stop-color': '#fff', 'stop-opacity': '0' }));
+  dome.appendChild(make('stop', { offset: '82%', 'stop-color': '#000', 'stop-opacity': '0' }));
+  dome.appendChild(make('stop', { offset: '100%', 'stop-color': '#000', 'stop-opacity': chip.shade }));
+  defs.appendChild(dome);
+
   const shelf = make('g');
   const fills = make('g');
   const land = make('g');
@@ -3839,7 +4580,7 @@ function drawBoard() {
     const d = smoothClosedPath(m.points);
 
     // ocean depth bands
-    for (const [width, color] of OCEAN_BANDS) {
+    for (const [width, color] of theme().oceanBands) {
       shelf.appendChild(make('path', { class: 'shelf', d: d, 'stroke-width': width, stroke: color }));
     }
 
@@ -3870,7 +4611,7 @@ function drawBoard() {
       const d = 'M' + cell.map((p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L ') + ' Z';
       group.appendChild(make('path', {
         class: 'region', d: d,
-        fill: territoryFill(TERRITORIES[node.id].continentId, TERRAIN[node.id]),
+        fill: territoryFill(TERRITORIES[node.id].continentId, TERRAIN[node.id], theme()),
       }));
       edges.appendChild(make('path', { class: 'region-edge', d: d }));
     }
@@ -4003,16 +4744,16 @@ function drawBoard() {
     });
     g.appendChild(innerRule);
 
-    const divider = x + box.w / 2 - box.bonusW - box.size * 0.55;
-    const dividerEl = make('line', {
-      class: 'cartouche-rule',
-      x1: divider, y1: y - box.h / 2 + 5, x2: divider, y2: y + box.h / 2 - 5,
+    // The badge sits at the right end, one radius in from the plaque edge.
+    const badgeX = x + box.w / 2 - box.size * 0.7 - box.badgeR;
+    const badgeEl = make('circle', {
+      class: 'cartouche-badge', cx: badgeX, cy: y, r: box.badgeR,
     });
-    g.appendChild(dividerEl);
+    g.appendChild(badgeEl);
 
     const nameEl = make('text', {
       class: 'cartouche-name',
-      x: x - box.w / 2 + box.size * 1.1 + box.nameW / 2,
+      x: x - box.w / 2 + box.size * 1.0 + box.nameW / 2,
       y: y + box.size * 0.36,
     });
     nameEl.style.fontSize = box.size + 'px';
@@ -4020,12 +4761,12 @@ function drawBoard() {
     nameEl.textContent = name;
     g.appendChild(nameEl);
 
+    // Centred on the badge, not offset from a baseline: the class sets
+    // dominant-baseline:middle, and doing both drops the digits low in the ring.
     const bonusEl = make('text', {
-      class: 'cartouche-bonus',
-      x: divider + (x + box.w / 2 - divider) / 2,
-      y: y + box.size * 0.36,
+      class: 'cartouche-bonus', x: badgeX, y: y,
     });
-    bonusEl.style.fontSize = (box.size * 0.92) + 'px';
+    bonusEl.style.fontSize = (box.size * 0.76) + 'px';
     bonusEl.textContent = bonus;
     g.appendChild(bonusEl);
 
@@ -4033,7 +4774,7 @@ function drawBoard() {
     // keep direct references rather than querying later: the parts that change
     // colour are known right here, and a selector lookup would be both slower and
     // invisible to the DOM stub the tests run against
-    watermarks[cId] = { g, plate, innerRule, divider: dividerEl, name: nameEl };
+    watermarks[cId] = { g, plate, innerRule, badge: badgeEl, name: nameEl };
   }
 
   // Atlas furniture: open-water names and a compass rose.
@@ -4093,7 +4834,14 @@ function drawBoard() {
         continue;
       }
 
-      links.appendChild(make('line', { class: 'link', x1: a.x, y1: a.y, x2: b.x, y2: b.y }));
+      // Land borders are not drawn. The regions now agree with the adjacency
+      // graph exactly (validate-geography FAILS if they ever stop), so a shared
+      // edge IS the connection — which is how a printed board says it. A line
+      // between two territory centres is a network diagram's way of saying the
+      // same thing twice, and it was the loudest thing on the map.
+      if (theme().landLinks) {
+        links.appendChild(make('line', { class: 'link', x1: a.x, y1: a.y, x2: b.x, y2: b.y }));
+      }
     }
   }
   svg.appendChild(links);
@@ -4106,6 +4854,9 @@ function drawBoard() {
     g.dataset.id = id;
     const ring = make('circle', { class: 'ring', cx: p.x, cy: p.y, r: 20 });
     const disc = make('circle', { class: 'disc', cx: p.x, cy: p.y, r: 16 });
+    const bevel = make('circle', {
+      class: 'bevel', cx: p.x, cy: p.y, r: 16, fill: 'url(#chip-dome)',
+    });
     const troops = make('text', { class: 'troops', x: p.x, y: p.y });
     // lettered across the territory where one fits, otherwise tagged under the
     // marker as a fallback — better than lettering across a neighbour
@@ -4125,7 +4876,8 @@ function drawBoard() {
       label.style.letterSpacing = '1.1px';
     }
     label.textContent = text;
-    g.appendChild(ring); g.appendChild(disc); g.appendChild(troops); g.appendChild(label);
+    g.appendChild(ring); g.appendChild(disc); g.appendChild(bevel);
+    g.appendChild(troops); g.appendChild(label);
     g.addEventListener('click', () => onTerritory(id));
     g.addEventListener('mouseenter', () => { hovered = id; renderHover(); });
     g.addEventListener('mouseleave', () => { hovered = null; renderHover(); });
@@ -4135,7 +4887,7 @@ function drawBoard() {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTerritory(id); }
     });
     layer.appendChild(g);
-    nodes[id] = { g: g, disc: disc, ring: ring, troops: troops };
+    nodes[id] = { g: g, disc: disc, bevel: bevel, ring: ring, troops: troops };
   }
   svg.appendChild(layer);
 
@@ -4153,8 +4905,13 @@ function drawBoard() {
   paperDefs.appendChild(grainFilter);
 
   const vignette = make('radialGradient', { id: 'vignette', cx: '50%', cy: '50%', r: '74%' });
-  vignette.appendChild(make('stop', { offset: '55%', 'stop-color': '#000', 'stop-opacity': '0' }));
-  vignette.appendChild(make('stop', { offset: '100%', 'stop-color': '#000', 'stop-opacity': '0.3' }));
+  const fade = theme().vignette;
+  vignette.appendChild(make('stop', {
+    offset: '55%', 'stop-color': fade.color, 'stop-opacity': fade.innerOpacity,
+  }));
+  vignette.appendChild(make('stop', {
+    offset: '100%', 'stop-color': fade.color, 'stop-opacity': fade.outerOpacity,
+  }));
   paperDefs.appendChild(vignette);
   svg.appendChild(paperDefs);
 
@@ -4322,9 +5079,23 @@ const CONT_SHORT = {
   africa: 'Africa', asia: 'Asia', australia: 'Australia',
 };
 
+/**
+ * A player's swatch. EVERY swatch — roster, charts, odds bar, summary — asks
+ * here, or a theme that remaps colours ends up showing two different reds for
+ * the same commander.
+ *
+ * Player colours live on the player record and are written into save files, so
+ * a theme cannot own them without changing what a saved game means. This is the
+ * one place a theme could remap them for display if a lighter board ever needs
+ * it — everything else asks here.
+ */
 function colorOf(playerId) {
   const p = state.players.find((x) => x.id === playerId);
-  return p ? p.color : '#33465a';
+  if (!p) return theme().vars['--no-owner'];
+  // A theme may darken the swatches for display — the engine's values were
+  // picked against a navy ocean and several of them vanish on paper. Keyed by
+  // the engine value, and never written back: what a save contains is unchanged.
+  return theme().playerInk[p.color] || p.color;
 }
 
 /** Pick label ink that stays legible on whichever player colour sits underneath. */
@@ -4332,7 +5103,7 @@ function inkOn(hex) {
   const c = [1, 3, 5].map((i) => parseInt(hex.substr(i, 2), 16) / 255)
     .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
   const lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  return lum > 0.34 ? '#0a141e' : '#f2ece0';
+  return lum > 0.34 ? theme().ink.dark : theme().ink.light;
 }
 
 function render() {
@@ -4341,12 +5112,20 @@ function render() {
   $('r-round').textContent = state.turnNumber;
   $('r-phase').textContent = PHASE_NAMES[state.turn.phase] || state.turn.phase;
   $('r-player').textContent = player.name;
-  $('r-player').style.color = player.color;
-  const seat = state.players.findIndex((p) => !p.isCPU) + 1;
-  $('r-seat').textContent = seat + ' of ' + state.players.length;
+  $('r-player').style.color = colorOf(player.id);
+  // humanPlayer(), never a bare !isCPU test: the neutral faction is not a CPU
+  // either, so `findIndex(p => !p.isCPU)` returned the neutral's seat whenever
+  // the shuffle sat it ahead of you, and the readout quietly reported someone
+  // else's position as yours. The neutral is left out of the count as well —
+  // this line sits beside Round and Phase and describes the turn order, and the
+  // neutral never takes a turn.
+  const seats = playingPlayers(state);
+  const seat = seats.indexOf(humanPlayer(state)) + 1;
+  $('r-seat').textContent = seat + ' of ' + seats.length;
   const playable = state.turn.phase !== PHASES.GAME_OVER && !humanPlayer(state).eliminated;
   $('btn-concede').disabled = !playable;
-  $('btn-save').disabled = false;
+  // A save is only coherent between moves, not inside one.
+  $('btn-save').disabled = busy;
   renderRoster();
   renderContinents();
   renderMap();
@@ -4377,7 +5156,7 @@ function renderRoster() {
       : held + ' terr &middot; ' + troops + ' tr' +
         (bonus ? ' <span style="color:var(--brass)">+' + bonus + '</span>' : '');
     return '<div class="' + cls.join(' ') + '">' +
-      '<span class="swatch" style="background:' + p.color + '"></span>' +
+      '<span class="swatch" style="background:' + colorOf(p.id) + '"></span>' +
       '<span class="who">' + escapeHtml(p.name) + '</span>' +
       '<span class="stat">' + stat + cardTag + '</span></div>';
   }).join('');
@@ -4465,7 +5244,7 @@ function renderMap() {
       // the plaque and its rules take the owner's colour; the bonus stays brass
       mark.plate.style.stroke = tint;
       mark.innerRule.style.stroke = tint;
-      mark.divider.style.stroke = tint;
+      mark.badge.style.stroke = tint;
       mark.name.style.fill = tint;
     }
   }
@@ -4656,11 +5435,11 @@ function renderAttack(box, title) {
     '<p class="prompt"><strong>' + from.name + '</strong> against <strong>' + to.name + '</strong>.</p>' +
     '<div class="odds">' +
       '<div class="odds-heads">' +
-        '<span class="odds-side" style="color:' + player.color + '"><b>' + odds + '%</b> you</span>' +
+        '<span class="odds-side" style="color:' + colorOf(player.id) + '"><b>' + odds + '%</b> you</span>' +
         '<span class="odds-side" style="color:' + colorOf(to.ownerId) + '">them <b>' + (100 - odds) + '%</b></span>' +
       '</div>' +
       '<div class="odds-bar">' +
-        '<i style="width:' + odds + '%;background:' + player.color + '"></i>' +
+        '<i style="width:' + odds + '%;background:' + colorOf(player.id) + '"></i>' +
         '<i style="width:' + (100 - odds) + '%;background:' + colorOf(to.ownerId) + '"></i>' +
       '</div>' +
       '<div class="odds-scale"><span>' + from.troopCount + ' troops</span><span>' + to.troopCount + ' troops</span></div>' +
@@ -4954,8 +5733,11 @@ async function animateBattle(ev, duration) {
   if (duration <= 0) { render(); return; }
   const ratio = ev.before.to > 0 ? Math.max(0, ev.after.to) / ev.before.to : 0;
   shrunkNode = ev.toId;
-  node.disc.style.transitionDuration = duration + 'ms';
-  node.disc.style.r = (16 * (0.32 + 0.68 * ratio)).toFixed(1) + 'px';
+  const r = (16 * (0.32 + 0.68 * ratio)).toFixed(1) + 'px';
+  for (const part of [node.disc, node.bevel]) {
+    part.style.transitionDuration = duration + 'ms';
+    part.style.r = r;
+  }
   render();
   await sleep(duration);
 }
@@ -4965,12 +5747,16 @@ async function animateCapture(ev, duration) {
   if (!node) { releaseShrink(); return; }
   const color = colorOf(ev.attackerId);
   if (duration <= 0) { releaseShrink(); render(); return; }
-  node.disc.style.transitionDuration = Math.round(duration * 0.35) + 'ms';
-  node.disc.style.r = '1px';
+  for (const part of [node.disc, node.bevel]) {
+    part.style.transitionDuration = Math.round(duration * 0.35) + 'ms';
+    part.style.r = '1px';
+  }
   await sleep(duration * 0.35);
   node.disc.setAttribute('fill', color);
   node.troops.setAttribute('fill', inkOn(color));
-  node.disc.style.r = '';                       // swells back to full size in the new colour
+  // swells back to full size in the new colour
+  node.disc.style.r = '';
+  node.bevel.style.r = '';
   await sleep(duration * 0.45);
   releaseShrink();
   render();
@@ -4979,8 +5765,10 @@ async function animateCapture(ev, duration) {
 /** Return a mid-battle disc to its normal radius. */
 function releaseShrink() {
   if (shrunkNode && nodes[shrunkNode]) {
-    nodes[shrunkNode].disc.style.r = '';
-    nodes[shrunkNode].disc.style.transitionDuration = '';
+    for (const part of [nodes[shrunkNode].disc, nodes[shrunkNode].bevel]) {
+      part.style.r = '';
+      part.style.transitionDuration = '';
+    }
   }
   shrunkNode = null;
 }
@@ -5346,7 +6134,7 @@ function renderChart() {
 
 function chartLegend() {
   return '<div class="legend">' + state.players.map((p) =>
-    '<span><i style="background:' + p.color + '"></i>' + escapeHtml(p.name) + '</span>').join('') +
+    '<span><i style="background:' + colorOf(p.id) + '"></i>' + escapeHtml(p.name) + '</span>').join('') +
     '</div>';
 }
 
@@ -5382,7 +6170,7 @@ function lineChart(view) {
     '" x2="' + (W - PAD_R) + '" y2="' + py(0).toFixed(1) + '"/>';
   for (const p of state.players) {
     const points = rounds.map((r, i) => px(i).toFixed(1) + ' ' + py(view.pick(r, p.id)).toFixed(1));
-    svg += '<polyline class="trace" stroke="' + p.color + '" points="' + points.join(' ') + '"/>';
+    svg += '<polyline class="trace" stroke="' + colorOf(p.id) + '" points="' + points.join(' ') + '"/>';
   }
   svg += '<text class="tick" x="' + PAD_L + '" y="' + (H - 5) + '">R' + rounds[0].turn + '</text>';
   svg += '<text class="tick" x="' + (W - PAD_R) + '" y="' + (H - 5) +
@@ -5407,9 +6195,9 @@ function casualtiesChart() {
     svg += '<text class="bar-row" x="0" y="' + (y + 11) + '">' +
       escapeHtml(p.name.split(' (')[0]) + '</text>';
     svg += '<rect x="' + PAD_L + '" y="' + y + '" width="' + scale(st.troopsKilled).toFixed(1) +
-      '" height="8" fill="' + p.color + '" opacity="0.95"/>';
+      '" height="8" fill="' + colorOf(p.id) + '" opacity="0.95"/>';
     svg += '<rect x="' + PAD_L + '" y="' + (y + 10) + '" width="' + scale(st.troopsLost).toFixed(1) +
-      '" height="8" fill="' + p.color + '" opacity="0.4"/>';
+      '" height="8" fill="' + colorOf(p.id) + '" opacity="0.4"/>';
     const ratio = st.troopsLost ? (st.troopsKilled / st.troopsLost).toFixed(2) : '\u2014';
     svg += '<text class="bar-row" x="' + (W - PAD_R + 6) + '" y="' + (y + 13) + '">' +
       ratio + '</text>';
@@ -5429,11 +6217,6 @@ function rivalriesChart() {
     max = Math.max(max, state.stats[p.id].territoriesCaptured);
   }
   const scale = (n) => (n / max) * (W - PAD_L - PAD_R);
-  const colorOfId = (id) => {
-    const p = state.players.find((x) => x.id === id);
-    return p ? p.color : '#33465a';
-  };
-
   let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Rivalries">';
   state.players.forEach((p, i) => {
     const y = i * rowH + 6;
@@ -5445,7 +6228,7 @@ function rivalriesChart() {
     for (const victimId of Object.keys(taken)) {
       const w = scale(taken[victimId]);
       svg += '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) +
-        '" height="13" fill="' + colorOfId(victimId) + '" opacity="0.85"/>';
+        '" height="13" fill="' + colorOf(victimId) + '" opacity="0.85"/>';
       x += w;
       total += taken[victimId];
     }
@@ -5462,10 +6245,12 @@ function renderStatGrid() {
     const st = state.stats[p.id];
     const held = territoryCount(state, p.id);
     const cls = [];
-    if (!p.isCPU) cls.push('you');
+    // same trap as the seat readout — the neutral faction is !isCPU too, and
+    // marking its row as yours on the summary is the visible symptom
+    if (p.id === humanPlayer(state).id) cls.push('you');
     if (p.eliminated) cls.push('out');
     return '<tr class="' + cls.join(' ') + '">' +
-      '<td><span class="who"><span class="swatch" style="background:' + p.color + '"></span>' +
+      '<td><span class="who"><span class="swatch" style="background:' + colorOf(p.id) + '"></span>' +
         escapeHtml(p.name) + '</span></td>' +
       '<td>' + held + '</td>' +
       '<td>' + st.peakTerritories + '</td>' +
