@@ -4,7 +4,7 @@
 1 human vs. 1–5 CPU opponents on the classic 42-territory map. A headless, UI-agnostic
 rules engine plus a self-contained playable board.
 
-**Play it:** open `play.html` in a browser. No server, no install, no build step needed.
+**Play it:** open `index.html` in a browser. No server, no install, no build step needed.
 
 ```bash
 node build.js          # rebuild play.html from src/ after any change
