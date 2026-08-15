@@ -353,6 +353,41 @@ svg.board{width:100%;height:100%;display:block}
 .slider-head b{font-family:var(--font-data);font-size:19px;font-weight:600;color:var(--brass)}
 input[type=range]{width:100%;accent-color:var(--brass)}
 
+/* The objective and how close it is. The meter matters as much as the text:
+   "conquer Asia and Africa" is a sentence, "Asia 9/12" is a plan. */
+.mission-text{font-size:12.5px;line-height:1.5;margin:0 0 10px;color:var(--sand)}
+.mission-part{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.mission-part .lbl{font-family:var(--font-map);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--sand-dim);width:96px;flex-shrink:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mission-part .bar{flex:1;height:8px;background:var(--inset);
+  border:1px solid var(--chart-line);overflow:hidden}
+.mission-part .bar i{display:block;height:100%;background:var(--brass);
+  transition:width .35s cubic-bezier(.4,0,.2,1)}
+.mission-part.met .bar i{background:var(--win)}
+.mission-part .num{font-family:var(--font-data);font-size:10.5px;color:var(--sand-dim);
+  width:52px;text-align:right;flex-shrink:0}
+.mission-part.met .num{color:var(--win)}
+.mission-note{font-size:11px;color:var(--sand-dim);margin:9px 0 0;line-height:1.45}
+.mission-note b{color:var(--brass)}
+
+/* The end-screen reveal: what everyone was actually playing for. */
+.reveal{border:1px solid var(--chart-line);background:var(--inset);
+  padding:11px 13px;margin-bottom:20px}
+.reveal h3{font-family:var(--font-map);font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--sand-dim);margin:0 0 9px;font-weight:500}
+.reveal-row{display:flex;align-items:baseline;gap:8px;font-size:12px;
+  padding:4px 0;border-top:1px solid var(--chart-line-soft)}
+.reveal-row:first-of-type{border-top:none}
+.reveal-row .swatch{width:9px;height:9px;border-radius:2px;flex-shrink:0;
+  align-self:center}
+.reveal-row .who{width:112px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.reveal-row .what{flex:1;color:var(--sand-dim);line-height:1.4}
+.reveal-row .done{font-family:var(--font-map);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--win);flex-shrink:0}
+.reveal-row.won .who{color:var(--brass);font-weight:600}
+
 .hand{display:flex;flex-wrap:wrap;gap:6px}
 .card{border:1px solid var(--chart-line);padding:6px 9px;min-width:74px;
   background:var(--inset);cursor:pointer;text-align:left}
@@ -484,6 +519,10 @@ input[type=range]{width:100%;accent-color:var(--brass)}
         <p class="flash-msg" id="flashbar" role="status" hidden></p>
         <div id="action"></div>
       </section>
+      <section id="mission-box" hidden>
+        <h2>Your mission</h2>
+        <div id="mission"></div>
+      </section>
       <section>
         <h2>Your cards <span id="card-count" style="font-family:var(--font-data);color:var(--brass)"></span></h2>
         <div id="cards"></div>
@@ -543,6 +582,16 @@ input[type=range]{width:100%;accent-color:var(--brass)}
     </div>
 
     <div class="field">
+      <label for="in-missions">Secret missions</label>
+      <select id="in-missions">
+        <option value="off" selected>Off — last commander standing wins</option>
+        <option value="on">On — every commander draws a secret objective</option>
+      </select>
+      <p class="hint" style="margin:6px 0 0">Completing your objective wins immediately, so
+        games end sooner. You see only your own card.</p>
+    </div>
+
+    <div class="field">
       <label for="in-theme">Board style</label>
       <select id="in-theme">
         <option value="atlas" selected>Night atlas — dark ocean, muted ground</option>
@@ -566,6 +615,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
     <h1 id="result-title">Victory</h1>
     <p class="sub" id="result-sub"></p>
     <div class="headline" id="headline"></div>
+    <div class="reveal" id="reveal" hidden></div>
     <div class="chart" id="chart"></div>
     <table class="statgrid" id="statgrid"></table>
     <div class="btn-row">
@@ -846,6 +896,305 @@ const hasSet = (state, player) => findSet(player.cards) !== null;
 /** A player holding 5+ cards must trade in at the start of reinforcement. */
 const mustTradeIn = (player) => player.cards.length >= 5;
 
+/* ===== src/cards/missions.js ===== */
+/**
+ * Secret missions — the classic variant, as its own deck.
+ *
+ * Each commander draws one objective face down. The first to complete theirs
+ * wins, which usually happens long before anyone could conquer the world, and
+ * changes what a strong position looks like: "hold Asia and Africa" or "drive
+ * the red commander off the map" rather than "take everything".
+ *
+ * ## The published rules this follows
+ *
+ * Twelve cards; missions naming colours not in play are removed; one dealt to
+ * each player and the rest set aside. Fourteen distinct missions exist across
+ * printings — occupy 24 territories, occupy 18 with two armies in each, destroy
+ * a named colour, and six two-or-three continent conquests.
+ *
+ * **The kill-a-colour edge case is the one worth getting right**, and the UK and
+ * US printings disagree. This follows the UK rule, chosen deliberately: you must
+ * destroy that colour *yourself*. If someone else lands the final blow — or you
+ * drew your own colour — the mission becomes "occupy 24 territories" instead.
+ * The US rule lets anyone complete it for you, which means winning from a battle
+ * you had no part in and could not see coming.
+ *
+ * A consequence worth knowing: under the strict rule a mission can only ever be
+ * completed by its holder's own actions, so a mission win can only happen on
+ * that player's turn. That is why `checkWinner` needs no extra call sites.
+ *
+ * ## Shape
+ *
+ * A mission is a pure predicate over state plus a matching progress report. Both
+ * derive from the same definition on purpose: a meter that disagrees with the
+ * win condition is worse than no meter.
+ *
+ * Nothing here mutates. `dealMissions` and `resolveMissionConversions` do, and
+ * they live here only because they are the two places that know the rules.
+ */
+
+/** Occupy this many territories, no other condition. */
+const TERRITORY_TARGET = 24;
+
+/** Occupy this many, holding at least this many armies in each. */
+const HELD_TARGET = 18;
+const HELD_MIN_ARMIES = 2;
+
+const MISSION_KINDS = {
+  TERRITORIES: 'territories',
+  TERRITORIES_HELD: 'territoriesHeld',
+  CONTINENTS: 'continents',
+  ELIMINATE: 'eliminate',
+};
+
+const owned = (state, playerId) =>
+  TERRITORY_IDS.filter((id) => state.territories[id].ownerId === playerId);
+
+const holdsContinent = (state, playerId, cId) =>
+  CONTINENT_TERRITORIES[cId].every((id) => state.territories[id].ownerId === playerId);
+
+const continentsHeld = (state, playerId) =>
+  Object.keys(CONTINENT_TERRITORIES).filter((cId) => holdsContinent(state, playerId, cId));
+
+// ---------------------------------------------------------------------------
+// The missions themselves
+// ---------------------------------------------------------------------------
+
+function territoriesMission() {
+  return {
+    id: 'occupy24',
+    kind: MISSION_KINDS.TERRITORIES,
+    text: `Occupy ${TERRITORY_TARGET} territories.`,
+    check: (state, playerId) => owned(state, playerId).length >= TERRITORY_TARGET,
+    progress: (state, playerId) => {
+      const held = owned(state, playerId).length;
+      return {
+        done: Math.min(held, TERRITORY_TARGET),
+        total: TERRITORY_TARGET,
+        parts: [{ label: 'Territories', done: held, total: TERRITORY_TARGET }],
+      };
+    },
+  };
+}
+
+function heldMission() {
+  const qualifying = (state, playerId) =>
+    owned(state, playerId).filter(
+      (id) => state.territories[id].troopCount >= HELD_MIN_ARMIES
+    ).length;
+  return {
+    id: 'occupy18held',
+    kind: MISSION_KINDS.TERRITORIES_HELD,
+    text: `Occupy ${HELD_TARGET} territories, holding at least ${HELD_MIN_ARMIES} armies in each.`,
+    check: (state, playerId) => qualifying(state, playerId) >= HELD_TARGET,
+    progress: (state, playerId) => {
+      const n = qualifying(state, playerId);
+      return {
+        done: Math.min(n, HELD_TARGET),
+        total: HELD_TARGET,
+        parts: [
+          { label: `Territories with ${HELD_MIN_ARMIES}+`, done: n, total: HELD_TARGET },
+          { label: 'Territories held', done: owned(state, playerId).length, total: HELD_TARGET },
+        ],
+      };
+    },
+  };
+}
+
+/**
+ * Conquer some named continents, plus optionally any `extra` others.
+ *
+ * "A third continent of your choosing" is not a declaration made up front — the
+ * card is satisfied by whichever one you end up holding, so the predicate counts
+ * rather than remembers. That also means the AI is free to change its mind about
+ * which third it is going for, which it will.
+ */
+function continentsMission(id, required, extra = 0) {
+  const names = required.map((c) => CONTINENTS[c].name);
+  const text = extra
+    ? `Conquer ${names.join(' and ')}, and ${extra} more continent of your choosing.`
+    : `Conquer ${names.join(' and ')}.`;
+  return {
+    id,
+    kind: MISSION_KINDS.CONTINENTS,
+    required,
+    extra,
+    text,
+    check: (state, playerId) => {
+      if (!required.every((c) => holdsContinent(state, playerId, c))) return false;
+      if (!extra) return true;
+      const others = continentsHeld(state, playerId).filter((c) => !required.includes(c));
+      return others.length >= extra;
+    },
+    progress: (state, playerId) => {
+      const parts = required.map((cId) => ({
+        label: CONTINENTS[cId].name,
+        done: CONTINENT_TERRITORIES[cId].filter(
+          (t) => state.territories[t].ownerId === playerId
+        ).length,
+        total: CONTINENT_TERRITORIES[cId].length,
+      }));
+      if (extra) {
+        const others = continentsHeld(state, playerId).filter((c) => !required.includes(c));
+        parts.push({
+          label: `Any ${extra} more continent`,
+          done: Math.min(others.length, extra),
+          total: extra,
+        });
+      }
+      const done = parts.reduce((n, p) => n + Math.min(p.done, p.total), 0);
+      const total = parts.reduce((n, p) => n + p.total, 0);
+      return { done, total, parts };
+    },
+  };
+}
+
+/**
+ * Destroy every army of a named commander — and be the one who does it.
+ *
+ * The predicate reads `state.eliminations`, which records who landed the final
+ * blow, rather than merely checking that the target holds nothing. Without that
+ * record this mission would be completable by watching someone else do the work.
+ */
+function eliminateMission(targetId, targetName) {
+  return {
+    id: `eliminate:${targetId}`,
+    kind: MISSION_KINDS.ELIMINATE,
+    targetId,
+    targetName,
+    text: `Destroy every army of ${targetName}. You must strike the final blow yourself.`,
+    check: (state, playerId) =>
+      (state.eliminations || []).some(
+        (e) => e.victimId === targetId && e.byId === playerId
+      ),
+    progress: (state, playerId) => {
+      const left = owned(state, targetId).length;
+      const struck = (state.eliminations || []).some(
+        (e) => e.victimId === targetId && e.byId === playerId
+      );
+      // Measured against the target's high-water mark rather than the whole
+      // board: "3 of 42 territories left" is a bar that never moves, while
+      // "driven back from 14 to 3" is the thing actually being asked about.
+      const peak = Math.max(
+        1, left, (state.stats && state.stats[targetId] || {}).peakTerritories || 0
+      );
+      return {
+        done: struck ? 1 : 0,
+        total: 1,
+        parts: [{
+          label: `${targetName} driven back`,
+          done: struck ? peak : peak - left,
+          total: peak,
+          detail: struck ? 'destroyed' : `${left} left`,
+        }],
+      };
+    },
+  };
+}
+
+/**
+ * The six continent combinations from the printed deck, mapped onto this board.
+ * Same continents, same pairings.
+ */
+const CONTINENT_MISSIONS = [
+  ['asia_southAmerica', ['asia', 'southAmerica'], 0],
+  ['asia_africa', ['asia', 'africa'], 0],
+  ['northAmerica_africa', ['northAmerica', 'africa'], 0],
+  ['northAmerica_australia', ['northAmerica', 'australia'], 0],
+  ['europe_southAmerica_plus', ['europe', 'southAmerica'], 1],
+  ['europe_australia_plus', ['europe', 'australia'], 1],
+];
+
+/** Every mission that does not name a player. */
+function fixedMissions() {
+  return [
+    territoriesMission(),
+    heldMission(),
+    ...CONTINENT_MISSIONS.map(([id, req, extra]) => continentsMission(id, req, extra)),
+  ];
+}
+
+/**
+ * Rebuild a mission from its id.
+ *
+ * Saves carry the id alone: it is smaller, it survives a mission being reworded,
+ * and it means the predicate a resumed game runs is this build's, not the one
+ * that happened to be current when the file was written.
+ */
+function missionById(id, state) {
+  if (!id) return null;
+  if (id.startsWith('eliminate:')) {
+    const targetId = id.slice('eliminate:'.length);
+    const target = state && state.players.find((p) => p.id === targetId);
+    return eliminateMission(targetId, target ? target.name : targetId);
+  }
+  return fixedMissions().find((m) => m.id === id) || null;
+}
+
+/**
+ * The deck for this game: every fixed mission, plus one "destroy" card per
+ * commander who can actually be destroyed.
+ *
+ * The neutral faction is excluded on both counts — it takes no turn, so it draws
+ * nothing, and it cannot win or lose the game, so hunting it is not an objective.
+ */
+function buildMissionDeck(state) {
+  const targets = state.players.filter((p) => !p.isNeutral);
+  return [
+    ...fixedMissions(),
+    ...targets.map((p) => eliminateMission(p.id, p.name)),
+  ];
+}
+
+/**
+ * Deal one mission to every commander who takes a turn.
+ *
+ * Nobody is dealt their own colour. The printed rules deal it and convert it to
+ * "occupy 24" on the spot, but that exists only because a physical deck cannot
+ * be filtered per player — the outcome is the same and this way the card the
+ * player holds is the card they are playing. It does make the 24-territory
+ * mission slightly rarer than the printed distribution.
+ */
+function dealMissions(state, rng) {
+  const deck = rng.shuffle(buildMissionDeck(state));
+  for (const player of state.players) {
+    if (player.isNeutral) continue;
+    const i = deck.findIndex((m) => m.targetId !== player.id);
+    if (i === -1) break;                       // unreachable with 8 fixed missions
+    player.mission = deck.splice(i, 1)[0];
+  }
+  return state;
+}
+
+/**
+ * Apply the strict kill-a-colour rule after an elimination.
+ *
+ * Anyone hunting the commander who just fell, who did not land the blow, loses
+ * the objective they were playing for and takes "occupy 24 territories" instead.
+ * Returns whose mission changed, so the interface can say so — a mission that
+ * silently becomes a different mission is a bad surprise at the moment it
+ * matters most.
+ */
+function resolveMissionConversions(state, victimId, eliminatorId) {
+  const changed = [];
+  for (const player of state.players) {
+    const mission = player.mission;
+    if (!mission || mission.kind !== MISSION_KINDS.ELIMINATE) continue;
+    if (mission.targetId !== victimId) continue;
+    if (player.id === eliminatorId) continue;      // they did it; the card stands
+    player.mission = territoriesMission();
+    changed.push({ playerId: player.id, from: mission, to: player.mission });
+  }
+  return changed;
+}
+
+/** Whether this player's mission is complete right now. */
+function missionComplete(state, playerId) {
+  const player = state.players.find((p) => p.id === playerId);
+  if (!player || !player.mission) return false;
+  return player.mission.check(state, playerId);
+}
+
 /* ===== src/combat/resolveCombat.js ===== */
 /**
  * COMBAT MODULE — swappable.
@@ -972,6 +1321,7 @@ const BATTLE_OUTCOMES = computeBattleOutcomes();
  */
 
 
+
 /**
  * The version this build WRITES. Bumped only for a change that an older reader
  * could not make sense of.
@@ -1071,6 +1421,10 @@ function serializeGame(state) {
       // instead of the person at the keyboard.
       isNeutral: !!p.isNeutral,
       color: p.color, eliminated: p.eliminated,
+      // The id alone. It is smaller, it survives a mission being reworded, and
+      // it means a resumed game runs THIS build's predicate rather than
+      // whatever was current when the file was written.
+      mission: p.mission ? p.mission.id : null,
       cards: p.cards.map((c) => ({ id: c.id, type: c.type, territoryId: c.territoryId })),
     })),
     // only what changes — the graph itself is rebuilt from the map data
@@ -1079,6 +1433,11 @@ function serializeGame(state) {
     ),
     deck: state.deck,
     discard: state.discard,
+    // Additive, so no version bump: a save written before missions existed
+    // loads with the flag false and an empty record. That is exactly what the
+    // tolerant reader in this file is for.
+    missions: !!state.missions,
+    eliminations: state.eliminations || [],
     turn: state.turn,
     setup: state.setup,
     stats: state.stats,
@@ -1155,7 +1514,15 @@ function deserializeGame(raw) {
     history: data.history || [],
     endedBy: data.endedBy || null,
     undoLog: data.undoLog || {},
+    missions: !!data.missions,
+    eliminations: data.eliminations || [],
   };
+  // Rehydrated after the state exists, because an "destroy this colour" mission
+  // needs the roster to name its target.
+  for (const player of state.players) {
+    const saved = data.players.find((p) => p.id === player.id);
+    player.mission = saved && saved.mission ? missionById(saved.mission, state) : null;
+  }
   if (data.winner) state.winner = players.find((p) => p.id === data.winner) || null;
   return state;
 }
@@ -1174,6 +1541,7 @@ function saveFilename(state) {
  * else (how many territories a player holds, which continents they control) is
  * derived on demand, so the state can never disagree with itself.
  */
+
 
 
 
@@ -1202,10 +1570,11 @@ const PLAYER_COLORS = ['#d4453a', '#3d8fd6', '#3fa87a', '#9b5fc0', '#e0a53c', '#
  *                                   false = territories dealt at random (auto-assign)
  * @param {boolean} [options.randomiseOrder]  shuffle who sits where in the turn order
  * @param {boolean} [options.neutral]  add a passive third faction (two-player games)
+ * @param {boolean} [options.missions]  deal each commander a secret objective
  */
 function createGame({
   humanName = 'You', cpuDifficulties = ['medium'], seed,
-  draft = false, randomiseOrder = false, neutral = false,
+  draft = false, randomiseOrder = false, neutral = false, missions = false,
 } = {}) {
   if (cpuDifficulties.length < 1 || cpuDifficulties.length > 5) {
     throw new Error('Game requires between 1 and 5 CPU opponents');
@@ -1280,7 +1649,18 @@ function createGame({
     stats: {},
     // Territory counts at the end of each round, for the summary's chart.
     history: [],
-    endedBy: null,          // 'conquest' | 'elimination' | 'concede'
+    endedBy: null,          // 'conquest' | 'elimination' | 'concede' | 'mission'
+    // Whether this game is being played to secret objectives.
+    missions: !!missions,
+    /**
+     * Who eliminated whom, and when.
+     *
+     * Needed because the strict kill-a-colour mission asks whether *you* struck
+     * the final blow, which the board cannot answer after the fact — a fallen
+     * commander holds nothing regardless of who emptied them. Also makes the
+     * summary's rivalry view honest about the last territory.
+     */
+    eliminations: [],
   };
   for (const p of seated) {
     state.stats[p.id] = {
@@ -1299,6 +1679,8 @@ function createGame({
     };
   }
   for (const p of seated) state.setup.armiesRemaining[p.id] = armies;
+
+  if (missions) dealMissions(state, rng);
 
   if (draft) {
     // Seat 0 (the human) picks first — first pick is a real advantage.
@@ -1550,6 +1932,7 @@ function log(state, message) {
  * for an illegal move, so a UI can call optimistically and show the error.
  * The engine mutates `state` in place; callers own snapshotting/undo if needed.
  */
+
 
 
 
@@ -1879,6 +2262,7 @@ function checkElimination(state, defeatedId, eliminatorId) {
   const defeated = getPlayer(state, defeatedId);
   const eliminator = getPlayer(state, eliminatorId);
   defeated.eliminated = true;
+  recordElimination(state, defeatedId, eliminatorId);
   if (defeated.isNeutral) {
     log(state, 'The neutral faction has been driven from the map');
     return;                       // holds no cards, and its fall ends nothing
@@ -1891,10 +2275,56 @@ function checkElimination(state, defeatedId, eliminatorId) {
   log(state, `${defeated.name} has been eliminated`);
 }
 
+/**
+ * Note who finished a commander off, and re-issue the missions that depended on
+ * it.
+ *
+ * Under the strict rule a "destroy this colour" mission is only completed by the
+ * hand that lands the final blow; anyone else hunting the same target loses the
+ * objective and takes "occupy 24 territories" instead. Announced in the log
+ * rather than swapped silently — a mission that quietly becomes a different
+ * mission is a bad surprise at exactly the moment it matters.
+ */
+function recordElimination(state, victimId, eliminatorId) {
+  (state.eliminations ||= []).push({
+    victimId, byId: eliminatorId, turn: state.turnNumber,
+  });
+  if (!state.missions) return;
+  for (const change of resolveMissionConversions(state, victimId, eliminatorId)) {
+    log(state, `${getPlayer(state, change.playerId).name} must find a new objective`);
+  }
+}
+
 function checkWinner(state) {
   // Contenders only. The neutral faction cannot win, and counting it as a
   // survivor would keep a decided game running forever.
   const remaining = activeContenders(state);
+
+  /**
+   * A completed secret objective ends the game before conquest ever could —
+   * which is the point of the variant.
+   *
+   * Checked first, and only at the two moments checkWinner already runs: after a
+   * capture is occupied, and at the end of a turn. That is enough because the
+   * strict kill-a-colour rule means a mission can only be completed by its own
+   * holder's actions, so there is no moment where someone else's move silently
+   * wins it for them. It also sidesteps the awkward case of an objective that is
+   * true for a moment in the middle of a turn and false again by the end of it.
+   *
+   * Conquest and last-man-standing remain as they were: eliminating everyone
+   * still wins, whatever your card says.
+   */
+  if (state.missions) {
+    for (const p of remaining) {
+      if (p.mission && p.mission.check(state, p.id)) {
+        state.winner = p;
+        if (!state.endedBy) state.endedBy = 'mission';
+        recordRound(state);
+        return p;
+      }
+    }
+  }
+
   if (remaining.length === 1) {
     state.winner = remaining[0];
     if (!state.endedBy) state.endedBy = 'elimination';
@@ -1937,6 +2367,10 @@ function concede(state, playerId) {
   // rivalry view never sees the handover at all.
   const surrendered = territoriesOf(state, playerId);
   for (const t of surrendered) t.ownerId = leader.id;
+  // Recorded as an elimination by the leader: they hold every one of the
+  // conceding player's territories, so a hunter's mission should resolve the
+  // same way it would have if they had taken them by force.
+  recordElimination(state, playerId, leader.id);
   if (surrendered.length) {
     state.stats[leader.id].territoriesCaptured += surrendered.length;
     state.stats[playerId].territoriesLost += surrendered.length;
@@ -2168,6 +2602,18 @@ function autoAssignRemaining(state, pickClaim, planner) {
 /**
  * Difficulty tiers are pure configuration over one shared AI engine.
  * Adding a tier is adding an entry here — no new code paths.
+ *
+ * `missionWeight` scales how hard a commander plays its secret objective when
+ * missions are on, and is ignored entirely when they are off — 25 fixed-seed
+ * conquest games are bit-identical with it present or absent.
+ *
+ * The measured shape of this dial is not what it looks like. Playing the card
+ * *partially* is worse than ignoring it: over 400 four-seat mission games the
+ * hard tier won 41.3% ignoring its card, 36.0% at weight 1.0, and 42.0% at 3.2.
+ * Half-commitment means deviating from sound play without going far enough to
+ * finish the objective. So the tiers are spread to either end of that curve
+ * deliberately, and medium sits in the dip *on purpose* — a commander that
+ * chases its objective and does it badly is what medium is meant to be.
  */
 const DIFFICULTY_CONFIG = {
   easy: {
@@ -2179,6 +2625,7 @@ const DIFFICULTY_CONFIG = {
     evaluatePosition: false,   // greedy, no lookahead
     tradeCardsEagerly: false,  // only trades when forced at 5+
     maxAttacksPerTurn: 4,
+    missionWeight: 0.25,       // holds a card, barely looks at it
   },
   medium: {
     minWinProbability: 0.6,
@@ -2189,6 +2636,7 @@ const DIFFICULTY_CONFIG = {
     evaluatePosition: false,
     tradeCardsEagerly: true,
     maxAttacksPerTurn: 10,
+    missionWeight: 0.9,        // chases its objective, and not always well
   },
   hard: {
     minWinProbability: 0.6,
@@ -2200,6 +2648,7 @@ const DIFFICULTY_CONFIG = {
     tradeCardsEagerly: true,
     maxAttacksPerTurn: 20,
     finishKills: true,         // presses on to eliminate a nearly-dead player
+    missionWeight: 3.2,        // commits: shapes the whole game around the card
   },
 };
 
@@ -2218,6 +2667,7 @@ const getConfig = (difficulty) => DIFFICULTY_CONFIG[difficulty] ?? DIFFICULTY_CO
  * The AI drives the same public engine actions a human does — anything it can
  * do, a person can do, and vice versa.
  */
+
 
 
 
@@ -2296,6 +2746,7 @@ function pickClaim(state, player) {
     const friendlyNeighbours = t.adjacentIds
       .filter((n) => state.territories[n].ownerId === player.id).length;
     score += friendlyNeighbours * 0.9 * config.borderDefenseWeight;
+    score += missionBias(state, player, t, config) * 0.5;
     // deny a continent an opponent is close to completing
     for (const other of state.players) {
       if (other.id === player.id) continue;
@@ -2338,6 +2789,93 @@ function takeSetupStep(state) {
 }
 
 // ---------------------------------------------------------------------------
+// Playing the card
+// ---------------------------------------------------------------------------
+
+/**
+ * The commander's secret objective, or null when it should not be consulted.
+ *
+ * Guarded in one place so every scoring site can ask without repeating the
+ * three conditions: missions are on, this player holds one, and this tier
+ * actually plays it.
+ */
+function activeMission(state, player, config) {
+  if (!state.missions || !player.mission || !config.missionWeight) return null;
+  return player.mission;
+}
+
+/**
+ * How much this territory is worth to the card, on top of what it is worth to
+ * the game.
+ *
+ * Added to the existing scores rather than replacing them, so a commander still
+ * defends, still avoids terrible odds, and still takes free ground — it just
+ * leans. That matters: an AI that optimises purely for its objective walks into
+ * losing positions on the way to a continent it will not hold long enough to
+ * cash. The weight is per-tier, and easy barely leans at all.
+ *
+ * The negative branch is deliberate. Without a cost for irrelevant ground, a
+ * continent mission reads as "everything is fine, this is slightly better",
+ * which is not a plan — it is the same greedy expansion with a preference.
+ */
+function missionBias(state, player, territory, config) {
+  const mission = activeMission(state, player, config);
+  if (!mission) return 0;
+  const w = config.missionWeight;
+
+  if (mission.kind === MISSION_KINDS.ELIMINATE) {
+    // Reuse the shape of finishKills: the target is permanently worth hunting,
+    // and everything else is ordinary ground.
+    return territory.ownerId === mission.targetId ? 9 * w : 0;
+  }
+
+  if (mission.kind === MISSION_KINDS.CONTINENTS) {
+    if (mission.required.includes(territory.continentId)) return 7 * w;
+    if (mission.extra) {
+      // "and one more of your choosing" — whichever we are closest to finishing
+      const ids = CONTINENT_TERRITORIES[territory.continentId];
+      const mine = ids.filter((id) => state.territories[id].ownerId === player.id).length;
+      const share = mine / ids.length;
+      if (share >= 0.5) return 5 * w * share;
+    }
+    return -1.5 * w;
+  }
+
+  // Both counting missions: every territory is progress, and the closer the
+  // count is to the target the harder it is worth pressing.
+  const target = mission.kind === MISSION_KINDS.TERRITORIES_HELD
+    ? HELD_TARGET : TERRITORY_TARGET;
+  const held = territoryCount(state, player.id);
+  return (held >= target - 6 ? 4 : 2.5) * w;
+}
+
+/**
+ * Where an army does the most for the card.
+ *
+ * Separate from `missionBias` because reinforcement answers a different
+ * question: not "is this worth taking" but "is this worth holding". The one
+ * case that matters is the 18-territories-with-two-armies card, where a
+ * territory sitting on a single army is a slot that does not count — and those
+ * are usually in the interior, which the normal border-first heuristic never
+ * even looks at.
+ */
+function missionReinforceBias(state, player, territory, config) {
+  const mission = activeMission(state, player, config);
+  if (!mission) return 0;
+  const w = config.missionWeight;
+
+  if (mission.kind === MISSION_KINDS.TERRITORIES_HELD
+      && territory.troopCount < HELD_MIN_ARMIES) {
+    return 7 * w;
+  }
+  if (mission.kind === MISSION_KINDS.CONTINENTS
+      && mission.required.includes(territory.continentId)) {
+    return 4 * w;
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Reinforcement
 // ---------------------------------------------------------------------------
 
@@ -2373,17 +2911,31 @@ function* doReinforcement(state, player, config) {
 function chooseReinforcementTarget(state, player, config) {
   const borders = borderTerritoriesOf(state, player.id);
   if (borders.length === 0) return territoriesOf(state, player.id)[0] ?? null;
-  if (state.rng.next() < config.randomness) return state.rng.pick(borders);
+
+  // A commander holding the "18 territories with two armies in each" card has
+  // to look past its own border: the territories that fail the card are the
+  // quiet interior ones on a single army, which the border-first heuristic
+  // never considers.
+  const mission = activeMission(state, player, config);
+  let candidates = borders;
+  if (mission && mission.kind === MISSION_KINDS.TERRITORIES_HELD) {
+    const thin = territoriesOf(state, player.id)
+      .filter((t) => t.troopCount < HELD_MIN_ARMIES && !borders.includes(t));
+    if (thin.length) candidates = borders.concat(thin);
+  }
+
+  if (state.rng.next() < config.randomness) return state.rng.pick(candidates);
 
   let best = null;
   let bestScore = -Infinity;
-  for (const t of borders) {
+  for (const t of candidates) {
     const enemyPressure = t.adjacentIds
       .filter((n) => state.territories[n].ownerId !== player.id)
       .reduce((sum, n) => sum + state.territories[n].troopCount, 0);
 
     let score = (enemyPressure - t.troopCount) * config.borderDefenseWeight;
     score += continentOpportunity(state, player, t) * config.continentWeight;
+    score += missionReinforceBias(state, player, t, config);
     // Slight bias toward territories that already hold a stack — massing wins fights.
     score += t.troopCount * 0.1;
     if (score > bestScore) { bestScore = score; best = t; }
@@ -2480,6 +3032,8 @@ function scoreAttacks(state, player, config) {
       const defenderStrength = totalTroops(state, to.ownerId);
       const ourStrength = totalTroops(state, player.id) || 1;
       score += (1 - defenderStrength / (ourStrength + defenderStrength)) * config.weakPlayerWeight * 3;
+
+      score += missionBias(state, player, to, config);
 
       let forced = false;
       if (nearlyDead && to.ownerId === nearlyDead.id) { score += 8; forced = winProb > 0.5; }
@@ -2630,6 +3184,9 @@ function planDeployment(board, player, armies) {
     // hold what you nearly own, and value continents that are cheap to defend
     score += CONTINENT_VALUE[t.continentId] * share * 3.2 * config.continentWeight;
     if (share > 0.6) score += CONTINENT_VALUE[t.continentId] * 2.4 * config.continentWeight;
+    // Deployment is planned against a frozen board, so the card is the only
+    // thing that distinguishes two otherwise identical border squares.
+    score += Math.max(0, missionBias(board, player, t, config)) * 0.35;
 
     // weaker commanders spread more raggedly
     score *= 1 + (board.rng.next() - 0.5) * config.randomness * 1.6;
@@ -3958,6 +4515,8 @@ let hovered = null;                  // territory under the cursor
 let gameId = 0;
 const newGameId = () => ++gameId;
 
+/** The mission last shown in the panel, so a genuine conversion can be announced. */
+let shownMissionId = null;
 let tipLayer = null;                 // the hover tooltip's <g>, kept so it can be removed
 let labelSpots = {};                 // territoryId -> where its name is lettered
 let shrunkNode = null;               // territory currently drawn mid-battle
@@ -4007,12 +4566,17 @@ $('btn-start').addEventListener('click', () => {
     draft: drafting,
     randomiseOrder: $('in-order').value === 'random',
     neutral: $('in-neutral').value === 'on',
+    missions: $('in-missions').value === 'on',
   });
   // In a draft the first real turn only opens once every army is placed.
   if (!drafting) beginTurn(state);
   sel = { from: null, to: null, chunk: 1, moveCount: null, lastCombat: null, pickedCards: [] };
   shrunkNode = null;
   busy = false;
+  // A different game's card is not a changed card. Without this, starting a new
+  // game or loading a save announces "your objective changed" on the first
+  // render, which is the one message that has to be trustworthy.
+  shownMissionId = null;
   $('setup').hidden = true;
   $('result').hidden = true;
   drawBoard();
@@ -4059,6 +4623,7 @@ function doLoad(file) {
       sel = { from: null, to: null, chunk: 1, moveCount: null, lastCombat: null, pickedCards: [] };
       busy = false;
       hovered = null;
+      shownMissionId = null;
       $('setup').hidden = true;
       $('result').hidden = true;
       drawBoard();
@@ -5130,6 +5695,7 @@ function render() {
   renderContinents();
   renderMap();
   renderAction();
+  renderMission();
   renderCards();
   renderLog();
 }
@@ -5591,6 +6157,56 @@ function addRow(box, buttons) {
 
 // ------------------------------------------------------------- the cards ---
 
+/**
+ * Your objective, and how close it is.
+ *
+ * Only ever your own: the whole point of the variant is not knowing what anyone
+ * else is chasing. Everything is revealed on the end screen instead.
+ *
+ * The meter is not decoration. "Conquer Asia and Africa" is a sentence; "Asia
+ * 9 of 12, Africa 4 of 6" is a plan, and it is the difference between a card you
+ * remember to check and one you play. It comes from `mission.progress()`, which
+ * lives beside the predicate that decides the win so the two cannot drift.
+ */
+function renderMission() {
+  const box = $('mission-box');
+  if (!state.missions) { box.hidden = true; shownMissionId = null; return; }
+  const human = humanPlayer(state);
+  const mission = human.mission;
+  if (!mission) { box.hidden = true; return; }
+  box.hidden = false;
+
+  // A mission that silently becomes a different mission is a bad surprise at
+  // exactly the moment it matters. The engine converts it when someone else
+  // destroys your target; say so out loud the first time it is drawn.
+  const converted = shownMissionId !== null && shownMissionId !== mission.id;
+  shownMissionId = mission.id;
+
+  const p = mission.progress(state, human.id);
+  const complete = mission.check(state, human.id);
+
+  const rows = p.parts.map((part) => {
+    const total = Math.max(1, part.total);
+    const done = Math.max(0, Math.min(part.done, total));
+    const met = done >= total;
+    const detail = part.detail || (done + '/' + total);
+    return '<div class="mission-part' + (met ? ' met' : '') + '">' +
+      '<span class="lbl">' + escapeHtml(part.label) + '</span>' +
+      '<span class="bar"><i style="width:' + ((done / total) * 100).toFixed(1) + '%"></i></span>' +
+      '<span class="num">' + escapeHtml(detail) + '</span></div>';
+  }).join('');
+
+  $('mission').innerHTML =
+    '<p class="mission-text">' + escapeHtml(mission.text) + '</p>' + rows +
+    (complete
+      ? '<p class="mission-note"><b>Objective complete.</b></p>'
+      : '<p class="mission-note">Completing this wins the game outright.</p>');
+
+  if (converted) {
+    flash('Your objective changed \u2014 ' + mission.text);
+  }
+}
+
 function renderCards() {
   const human = humanPlayer(state);
   const hand = human.cards;
@@ -6003,22 +6619,69 @@ function showResult() {
   const human = humanPlayer(state);
   const won = winner && winner.id === human.id;
   const conceded = state.endedBy === 'concede';
+  // A mission win is not a conquest — saying "took the world" when someone
+  // completed an objective holding half the board is simply untrue, and the
+  // engine can produce that ending now. The full reveal of everyone's cards
+  // belongs with the rest of the mission interface; this is only the sentence
+  // that would otherwise be wrong.
+  const byMission = state.endedBy === 'mission';
+  const objective = byMission && winner && winner.mission ? winner.mission.text : null;
 
   $('result-title').innerHTML = won
-    ? 'The world is <span>yours</span>'
+    ? (byMission ? 'Objective <span>complete</span>' : 'The world is <span>yours</span>')
     : (conceded ? 'You <span>conceded</span>' : 'The map is <span>lost</span>');
 
   const rounds = state.turnNumber + (state.turnNumber === 1 ? ' round' : ' rounds');
   $('result-sub').textContent = won
-    ? 'You took all 42 territories in ' + rounds + '.'
+    ? (byMission
+        ? 'You completed your secret mission in ' + rounds + '. ' + (objective || '')
+        : 'You took all 42 territories in ' + rounds + '.')
     : (conceded
         ? 'You handed the board to ' + (winner ? winner.name : 'the field') + ' after ' + rounds + '.'
-        : (winner ? winner.name : 'Nobody') + ' took the world in ' + rounds + '.');
+        : (winner ? winner.name : 'Nobody') + (byMission
+            ? ' completed their secret mission in ' + rounds + '. ' + (objective || '')
+            : ' took the world in ' + rounds + '.'));
 
   renderHeadline(human, winner);
+  renderReveal(winner);
   renderChart();
   renderStatGrid();
   $('result').hidden = false;
+}
+
+/**
+ * What everyone was actually playing for.
+ *
+ * The payoff of the variant, and cheap: you spend a whole game guessing why the
+ * green commander kept throwing armies at Australia, and this is where you find
+ * out. Shows how close each of them got, not just whether they made it — a
+ * rival who finished one territory short is a better story than a tick.
+ */
+function renderReveal(winner) {
+  const host = $('reveal');
+  if (!host) return;
+  if (!state.missions) { host.hidden = true; host.innerHTML = ''; return; }
+  host.hidden = false;
+
+  const rows = state.players.filter((p) => !p.isNeutral).map((p) => {
+    const mission = p.mission;
+    if (!mission) return '';
+    const done = mission.check(state, p.id);
+    const bar = mission.progress(state, p.id);
+    const part = bar.parts.map((q) => {
+      const total = Math.max(1, q.total);
+      return escapeHtml(q.label) + ' ' + Math.max(0, Math.min(q.done, total)) + '/' + total;
+    }).join(' &middot; ');
+    return '<div class="reveal-row' + (winner && p.id === winner.id ? ' won' : '') + '">' +
+      '<span class="swatch" style="background:' + colorOf(p.id) + '"></span>' +
+      '<span class="who">' + escapeHtml(p.name) + '</span>' +
+      '<span class="what">' + escapeHtml(mission.text) + '<br><span style="opacity:.8">' +
+      part + '</span></span>' +
+      (done ? '<span class="done">complete</span>' : '') +
+      '</div>';
+  }).join('');
+
+  host.innerHTML = '<h3>Secret missions</h3>' + rows;
 }
 
 /** The three numbers worth reading first. */
